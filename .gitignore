@@ -1,0 +1,59 @@
+# =========================
+# Security & Credentials
+# =========================
+# The leading slash ensures we only ignore the login.php in the root directory
+/dblogin.php
+*.env
+.env
+
+# =========================
+# Dependencies & Libraries
+# =========================
+# Ignore downloaded packages if you eventually use Composer or npm
+vendor/
+node_modules/
+
+# =========================
+# Runtime Data & Uploads
+# =========================
+# Ignore user-uploaded files or system logs
+/uploads/
+*.log
+
+# =========================
+# OS Generated Clutter
+# =========================
+# Windows
+Thumbs.db
+ehthumbs.db
+[Dd]esktop.ini
+$RECYCLE.BIN/
+
+# macOS / Linux (For graders or future team members)
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+*~
+*.swp
+
+# =========================
+# Visual Studio Code
+# =========================
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+.history/
+
+# =========================
+# Visual Studio
+# =========================
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+*.suo
+*.userprefs
