@@ -1,5 +1,5 @@
 <?php
-  require_once 'dblogin.php';
+  require_once 'db_login.php';
   $conn = new mysqli($hostname, $username, $password, $db);
   
   if ($conn->connect_error){

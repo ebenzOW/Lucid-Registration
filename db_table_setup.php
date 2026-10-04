@@ -1,6 +1,6 @@
 <?php
 
-require_once 'dbconnect.php';
+require_once 'db_connect.php';
 
 
 //USER_ID MUST BE RANDOMIZED 6 DIGIT!!!
