@@ -2,7 +2,7 @@
 
 //Everything below this will added to an authenticate user session file later
 session_start();
-require_once 'dbconnect.php';
+require_once 'db_connect.php';
 
 // If the user is not logged in, boot them back to the login page
 if (!isset($_SESSION["User_ID"])) {

@@ -1,6 +1,6 @@
 <?php
 session_start();
-require_once 'dbconnect.php';
+require_once 'db_connect.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST"){
     $email = trim($_POST['user_email']);
