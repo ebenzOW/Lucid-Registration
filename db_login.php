@@ -2,7 +2,7 @@
 
 $hostname = "localhost";
 $db = "lucid_university";
-$username = "";
+$username = "root";
 $password = "";
 ?>
 
