@@ -1,3 +1,4 @@
+<?php require_once 'db_table_setup.php' ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
