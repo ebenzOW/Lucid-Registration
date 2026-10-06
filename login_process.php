@@ -1,4 +1,6 @@
 <?php
+ini_set('display_errors', 1);
+error_reporting(E_ALL);
 session_start();
 require_once 'db_connect.php';
 
@@ -53,7 +55,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $_SESSION["User"] = $user; //can just do $_SESSION["User"]["User_Fname"] to access rest of info like User_Fname
 
 
-                $resetStmt = $conn->prepare("UPDATE Login
+                $resetStmt = $conn->prepare("UPDATE LOGIN
                                             SET No_Login_Attempts = 0
                                             WHERE User_ID = ?");
                 $resetStmt->bind_param("i", $user["User_ID"]);
@@ -86,7 +88,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $attempts = $user["No_Login_Attempts"] + 1;
 
                 if ($attempts >= 3) {
-                    $lockStmt = $conn->prepare("UPDATE Login
+                    $lockStmt = $conn->prepare("UPDATE LOGIN
                                                 SET No_Login_Attempts = ?, isLock = 1
                                                 WHERE User_ID = ?");
                     $lockStmt->bind_param("ii", $attempts, $user["User_ID"]);
@@ -98,7 +100,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     exit;
                 } else {
 
-                    $updateStmt = $conn->prepare("UPDATE Login 
+                    $updateStmt = $conn->prepare("UPDATE LOGIN 
                                                 SET No_Login_Attempts = ? 
                                                 WHERE User_ID = ?");
                     $updateStmt->bind_param("ii", $attempts, $user["User_ID"]);
