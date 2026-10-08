@@ -31,17 +31,18 @@ $fullName = strip_tags($fullName);
         <hr>
 
 
-        <!-- This is for later
+
         <div class="nav-links">
             <h3>Student Portal Actions:</h3>
             <ul>
-                <li><a href="register_classes.php">Register for Classes</a></li>
-                <li><a href="view_classes.php">View My Classes</a></li>
+                <li><a href="create_user.php">Create New Users</a></li>
+                <li><a href="view_users.php">View All Users</a></li>
+                <!-- 
                 <li><a href="view_schedule.php">View Schedule</a></li>
-                <li><a href="profile.php">My Profile</a></li>
+                <li><a href="profile.php">My Profile</a></li> 
+                -->
             </ul>
         </div>
-        -->
 
         
         <form action="logout.php" method="POST" class="logout-form">
