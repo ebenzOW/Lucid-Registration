@@ -84,7 +84,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 //failed login attempt
                 $attempts = $user["No_Login_Attempts"] + 1;
 
-                if ($attempts >= 10) {
+                if ($attempts >= 3) {
                     $lockStmt = $conn->prepare("UPDATE LOGIN
                                                 SET No_Login_Attempts = ?, is_Locked = 1
                                                 WHERE User_ID = ?");

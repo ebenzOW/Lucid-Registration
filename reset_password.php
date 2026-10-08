@@ -21,6 +21,7 @@ $savedEmail = $_SESSION['reset_email'] ?? '';
                 if ($_GET['error'] == 'invalid_code') echo "Invalid Code.";
                 if ($_GET['error'] == 'nomatch') echo "Passwords Must Match!";
                 if ($_GET['error'] == 'locked') echo "Your Account is Now Locked, a password reset code has been sent to your email.<br>Please reset your password to unlock your account.";
+                if ($_GET['error'] === 'policy') echo "Password must be 5-10 characters, contain at least 1 uppercase letter, and at least 1 symbol.";
             ?>
         </p>
         <?php endif; ?>
@@ -34,10 +35,11 @@ $savedEmail = $_SESSION['reset_email'] ?? '';
         <input type="text" name="reset_code" maxlength="6" pattern="\d{6}" required placeholder="123456"><br><br>
 
         <label>New Password:</label><br>
-        <input type="password" name="new_password" required><br><br>
+        <input type="password" name="new_password" minlength="5" maxlength="10" required><br>
+        <small>Must be 5–10 characters, include at least 1 uppercase letter and 1 symbol.</small><br><br>
 
-        <label>Confirm Password:</label><br>
-        <input type="password" name="confirm_password" required><br><br>
+        <label>Confirm New Password:</label><br>
+        <input type="password" name="confirm_password" minlength="5" maxlength="10" required><br><br>
 
         <button type="submit">Submit New Password</button>
     </form>

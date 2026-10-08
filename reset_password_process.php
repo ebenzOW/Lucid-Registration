@@ -20,6 +20,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         exit;
     }
 
+    $len       = strlen($newPassword);
+    $hasUpper  = preg_match('/[A-Z]/', $newPassword);
+    $hasSymbol = preg_match('/[^a-zA-Z0-9]/', $newPassword);
+
+    if ($len < 5 || $len > 10 || !$hasUpper || !$hasSymbol) {
+        header("Location: reset_password.php?error=policy");
+        exit;
+    }
+
     // Locate User_ID from LOGIN table
     $userStmt = $conn->prepare("SELECT User_ID FROM LOGIN WHERE User_Email = ?");
     $userStmt->bind_param("s", $email);

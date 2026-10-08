@@ -8,6 +8,7 @@ db_login_template.php
 *.env
 .env
 email_config.php
+notes.txt
 # =========================
 # Dependencies & Libraries
 # =========================

@@ -38,13 +38,18 @@ function sendPasswordResetCode(mysqli $conn, string $email): bool {
         $mail->SMTPAuth   = true;
         $mail->Username   = $mailConfig['smtp_user'];
         $mail->Password   = $mailConfig['smtp_pass'];
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
         $mail->Port       = $mailConfig['smtp_port'];
+
+        $mail->SMTPDebug = 3; // Level 3: connection & data
+$mail->Debugoutput = function($str, $level) {
+    error_log("PHPMailer [{$level}] " . microtime(true) . ": " . trim($str));
+};
 
         $mail->setFrom($mailConfig['from_email'], $mailConfig['from_name']);
         $mail->addAddress($email);
         $mail->Subject = 'Lucid University - Password Reset Code';
-        $mail->Body    = "Your verification code is: $secureNumber\n\nThis code expires in 15 minutes.";
+        $mail->Body    = "Your verification code is: $secureNumber\n\n";
         $mail->send();
 
         // Stash email in session for reset_password.php
