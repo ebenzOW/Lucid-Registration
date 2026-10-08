@@ -2,7 +2,9 @@
 # Security & Credentials
 # =========================
 # The leading slash ensures we only ignore the login.php in the root directory
+/db_login.php
 /dblogin.php
+/db_login_template.php
 *.env
 .env
 
