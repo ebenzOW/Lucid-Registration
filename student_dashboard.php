@@ -1,55 +1,20 @@
 <?php
+require_once 'student_authentication.php';
 
-//Everything below this will added to an authenticate user session file later
-session_start();
-require_once 'dbconnect.php';
+require_once 'db_connect.php';
+$fullName = $_SESSION["User"]["User_FName"];
 
-// If the user is not logged in, boot them back to the login page
-if (!isset($_SESSION["User_ID"])) {
-    header("Location: login.php");
-    exit;
+if (!empty($_SESSION["User"]["User_MName"])) {
+    $fullName .= " " . $_SESSION["User"]["User_MName"];
 }
 
-$userID = $_SESSION["User_ID"];
+$fullName .= " " . $_SESSION["User"]["User_LName"];
+$fullName = strip_tags($fullName);
 
-// Get the student's information
-$stmt = $conn->prepare("
-    SELECT User_FName, User_MName, User_LName
-    FROM Users
-    WHERE User_ID = ?
-");
-
-if (!$stmt) {
-    die("Database error: " . $conn->error);
-}
-
-$stmt->bind_param("i", $userID);
-$stmt->execute();
-
-$result = $stmt->get_result();
-
-if ($result->num_rows !== 1) {
-    // User ID in session doesn't exist in Users table
-    session_destroy();
-    header("Location: login.php");
-    exit;
-}
-
-$user = $result->fetch_assoc();
-
-$stmt->close();
-$conn->close();
-
-$fullName = $user["User_FName"];
-
-if (!empty($user["User_MName"])) {
-    $fullName .= " " . $user["User_MName"];
-}
-
-$fullName .= " " . $user["User_LName"];
-
-//Everything above this will added to an authenticate user session file later
 ?>
+
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
