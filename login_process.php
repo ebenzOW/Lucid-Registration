@@ -46,7 +46,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if(password_verify($password, $user["User_Password"])) {
             //above will be used later on
 
-            //if ($password === $user["User_Password"]) {
+            if($password === $user["User_Password"]) {
                 // Successful login and resets login attempts
                 $_SESSION["User_ID"] = $user["User_ID"];
                 $_SESSION["User_Type"] = $user["User_Type"];
@@ -87,8 +87,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 //failed login attempt
                 $attempts = $user["No_Login_Attempts"] + 1;
 
-                if ($attempts >= 10) {
-                    $lockStmt = $conn->prepare("UPDATE LOGIN
+                if($attempts >= 10){
+                    $lockStmt = $conn->prepare("UPDATE Login
                                                 SET No_Login_Attempts = ?, isLock = 1
                                                 WHERE User_ID = ?");
                     $lockStmt->bind_param("ii", $attempts, $user["User_ID"]);
