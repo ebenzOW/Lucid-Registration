@@ -20,6 +20,7 @@ $savedEmail = $_SESSION['reset_email'] ?? '';
                 if ($_GET['error'] == 'empty') echo "Please fill in all fields.";
                 if ($_GET['error'] == 'invalid_code') echo "Invalid Code.";
                 if ($_GET['error'] == 'nomatch') echo "Passwords Must Match!";
+                if ($_GET['error'] == 'locked') echo "Your Account is Now Locked, a password reset code has been sent to your email.<br>Please reset your password to unlock your account.";
             ?>
         </p>
         <?php endif; ?>

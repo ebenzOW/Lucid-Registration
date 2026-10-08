@@ -98,7 +98,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     sendPasswordResetCode($conn, $email);
 
                     $conn->close();
-                    header("Location: reset_password.php");
+                    header("Location: reset_password.php?error=locked");
                     exit;
                 } else {
 
