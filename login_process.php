@@ -37,7 +37,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if ($result->num_rows === 1) {
         $user = $result->fetch_assoc();
 
-        if ($user["isLock"]) {
+        if ($user["is_Locked"]) {
             $conn->close();
             header("Location: login.php?error=locked");
             exit;
@@ -64,21 +64,18 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $resetStmt->close();
                 $conn->close();
 
-                
+
                 //temporary next location, will replace with different user dashboards
                 if ($_SESSION["User_Type"] === "Student") {
                     header("Location: student_dashboard.php");
                     exit;
-                }
-                else if ($_SESSION["User_Type"] === "Faculty") {
+                } else if ($_SESSION["User_Type"] === "Faculty") {
                     header("Location: faculty_dashboard.php");
                     exit;
-                }
-                else if ($_SESSION["User_Type"] === "Admin") {
+                } else if ($_SESSION["User_Type"] === "Admin") {
                     header("Location: admin_dashboard.php");
                     exit;
-                }
-                else if ($_SESSION["User_Type"] === "Stat-Dept") {
+                } else if ($_SESSION["User_Type"] === "Stat-Dept") {
                     header("Location: stat_dashboard.php");
                     exit;
                 }
@@ -87,16 +84,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 //failed login attempt
                 $attempts = $user["No_Login_Attempts"] + 1;
 
-                if ($attempts >= 10) {
+                if ($attempts >= 3) {
                     $lockStmt = $conn->prepare("UPDATE LOGIN
-                                                SET No_Login_Attempts = ?, isLock = 1
+                                                SET No_Login_Attempts = ?, is_Locked = 1
                                                 WHERE User_ID = ?");
                     $lockStmt->bind_param("ii", $attempts, $user["User_ID"]);
                     $lockStmt->execute();
                     $lockStmt->close();
 
+                    require_once 'email_functions.php';
+
+                    //send reset code to user email and save email in session cookies to use in reset_password.php
+                    sendPasswordResetCode($conn, $email);
+
                     $conn->close();
-                    header("Location: login.php?error=locked");
+                    header("Location: reset_password.php?error=locked");
                     exit;
                 } else {
 
@@ -123,5 +125,3 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 if (isset($conn) && $conn instanceof mysqli) {
     $conn->close();
 }
-
-?>

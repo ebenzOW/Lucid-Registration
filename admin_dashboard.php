@@ -33,7 +33,7 @@ $fullName = strip_tags($fullName);
 
 
         <div class="nav-links">
-            <h3>Student Portal Actions:</h3>
+            <h3>Admin Portal Actions:</h3>
             <ul>
                 <li><a href="create_user.php">Create New Users</a></li>
                 <li><a href="view_users.php">View All Users</a></li>

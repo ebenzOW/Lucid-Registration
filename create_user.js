@@ -1,6 +1,6 @@
 function toggleFormSections() {
     const selectedType = document.getElementById('user_type').value;
-    
+   
     // Reset and hide all sub-sections
     document.querySelectorAll('.subtype-section').forEach(section => {
         section.style.display = 'none';
@@ -14,7 +14,7 @@ function toggleFormSections() {
         const activeSection = document.getElementById('section_' + selectedType);
         if (activeSection) {
             activeSection.style.display = 'block';
-            
+           
             // Sync form rules with your SQL and PHP validation rules
             if (selectedType === 'Admin') {
                 document.getElementById('security_level').setAttribute('required', 'required');
@@ -22,7 +22,6 @@ function toggleFormSections() {
                 document.getElementById('student_year').setAttribute('required', 'required');
                 document.getElementById('student_level').setAttribute('required', 'required');
             } else if (selectedType === 'Faculty') {
-                document.getElementById('faculty_type').setAttribute('required', 'required');
                 document.getElementById('faculty_status').setAttribute('required', 'required');
             }
         }

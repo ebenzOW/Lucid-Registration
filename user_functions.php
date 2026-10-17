@@ -298,12 +298,19 @@ function createStudent($conn, $userID, $data)
 
 function createFaculty($conn, $userID, $data)
 {
-    if (
-        empty($data["faculty_type"]) ||
-        empty($data["faculty_status"])
-    ) {
+    if (empty($data["faculty_status"])) {
         throw new Exception(
-            "Faculty type and faculty status are required."
+            "Faculty status is required."
+        );
+    }
+
+    if (!in_array(
+    $data["faculty_status"],
+    ["Full_Time", "Part_Time"],
+    true
+    )) {
+    throw new Exception(
+        "Invalid faculty status."
         );
     }
 
@@ -327,7 +334,7 @@ function createFaculty($conn, $userID, $data)
         "issss",
         $userID,
         $officeID,
-        $data["faculty_type"],
+        $data["faculty_status"],
         $specialty,
         $rank
     );
@@ -335,7 +342,7 @@ function createFaculty($conn, $userID, $data)
     $stmt->execute();
     $stmt->close();
 
-    if ($data["faculty_status"] === "Full Time") {
+    if ($data["faculty_status"] === "Full_Time") {
 
         $noClasses = isset($data["no_classes"])
             ? (int) $data["no_classes"]
@@ -367,3 +374,5 @@ function createFaculty($conn, $userID, $data)
     $stmt->execute();
     $stmt->close();
 }
+
+?>
