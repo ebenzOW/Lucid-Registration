@@ -51,7 +51,7 @@ unset($_SESSION["success_message"], $_SESSION["error_message"], $_SESSION["new_u
                 <?php // Skip blank form inputs and passwords for display cleanliness ?>
                 <?php if (!empty($value) && $key !== 'password'): ?>
                     <li>
-                        <strong><?= htmlspecialchars(ucwords(str_replace('_', ' ', $key))) ?>:</strong> 
+                        <strong><?= htmlspecialchars(ucwords(str_replace('_', ' ', $key))) ?>:</strong>
                         <?= htmlspecialchars($value) ?>
                     </li>
                 <?php endif; ?>
@@ -59,7 +59,7 @@ unset($_SESSION["success_message"], $_SESSION["error_message"], $_SESSION["new_u
         </ul>
         <hr>
     <?php endif; ?>
-    
+   
 <?php endif; ?>
 
 <?php if ($errorMessage): ?>
@@ -186,7 +186,7 @@ unset($_SESSION["success_message"], $_SESSION["error_message"], $_SESSION["new_u
                 <option value="Part_Time">Part Time</option>
             </select>
         </div>
-        
+       
         <!-- Inner Graduate Conditional Section -->
         <div id="grad_fields" style="display: none;">
             <br>
@@ -213,11 +213,6 @@ unset($_SESSION["success_message"], $_SESSION["error_message"], $_SESSION["new_u
     <div id="section_Faculty" class="subtype-section" style="display: none;">
         <h3>Faculty Information</h3>
 
-        <label for="faculty_type">Faculty Type:</label>
-        <input type="text" name="faculty_type" id="faculty_type">
-
-        <br><br>
-
         <label for="specialty">Specialty:</label>
         <input type="text" name="specialty" id="specialty">
 
@@ -236,8 +231,8 @@ unset($_SESSION["success_message"], $_SESSION["error_message"], $_SESSION["new_u
         <label for="faculty_status">Faculty Status:</label>
         <select name="faculty_status" id="faculty_status">
             <option value="">Select</option>
-            <option value="Full Time">Full Time</option>
-            <option value="Part Time">Part Time</option>
+            <option value="Full_Time">Full Time</option>
+            <option value="Part_Time">Part Time</option>
         </select>
 
         <br><br>
