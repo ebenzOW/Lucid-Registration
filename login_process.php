@@ -67,13 +67,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                 //temporary next location, will replace with different user dashboards
                 if ($_SESSION["User_Type"] === "Student") {
-                    header("Location: student_dashboard.php");
+                    header("Location: student/dashboard.php");
                     exit;
                 } else if ($_SESSION["User_Type"] === "Faculty") {
-                    header("Location: faculty_dashboard.php");
+                    header("Location: faculty/dashboard.php");
                     exit;
                 } else if ($_SESSION["User_Type"] === "Admin") {
-                    header("Location: admin_dashboard.php");
+                    header("Location: admin/dashboard.php");
                     exit;
                 } else if ($_SESSION["User_Type"] === "Stat-Dept") {
                     header("Location: stat_dashboard.php");

@@ -1,7 +1,7 @@
 <?php
-require_once 'student_authentication.php';
+require_once 'student_guard.php';
 
-require_once 'db_connect.php';
+require_once '../db_connect.php';
 $fullName = $_SESSION["User"]["User_FName"];
 
 if (!empty($_SESSION["User"]["User_MName"])) {
@@ -44,7 +44,7 @@ $fullName = strip_tags($fullName);
         -->
 
         
-        <form action="logout.php" method="POST" class="logout-form">
+        <form action="../logout.php" method="POST" class="logout-form">
             <button type="submit" class="logout-btn">Log Out</button>
         </form>
     </div>
