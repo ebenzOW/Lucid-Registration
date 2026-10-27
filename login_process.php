@@ -37,7 +37,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if ($result->num_rows === 1) {
         $user = $result->fetch_assoc();
 
-        if ($user["is_Locked"]) {
+        if ($user["isLock"]) {
             $conn->close();
             header("Location: login.php?error=locked");
             exit;
@@ -86,7 +86,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                 if ($attempts >= 3) {
                     $lockStmt = $conn->prepare("UPDATE LOGIN
-                                                SET No_Login_Attempts = ?, is_Locked = 1
+                                                SET No_Login_Attempts = ?, isLock = 1
                                                 WHERE User_ID = ?");
                     $lockStmt->bind_param("ii", $attempts, $user["User_ID"]);
                     $lockStmt->execute();

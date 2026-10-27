@@ -75,7 +75,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $updateStmt = $conn->prepare("UPDATE LOGIN 
                                   SET User_Password = ?, 
                                       No_Login_Attempts = 0, 
-                                      is_Locked = 0 
+                                      isLock = 0 
                                   WHERE User_ID = ?");
     $updateStmt->bind_param("si", $hashedPassword, $userId);
     $updateStmt->execute();
