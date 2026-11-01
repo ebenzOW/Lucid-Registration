@@ -22,6 +22,8 @@ function toggleFormSections() {
                 document.getElementById('student_year').setAttribute('required', 'required');
                 document.getElementById('student_level').setAttribute('required', 'required');
             } else if (selectedType === 'Faculty') {
+                const facDept = document.getElementById('faculty_department_id');
+                if (facDept) facDept.setAttribute('required', 'required');
                 document.getElementById('faculty_status').setAttribute('required', 'required');
             }
         }

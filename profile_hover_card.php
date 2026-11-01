@@ -164,9 +164,10 @@ if (!function_exists('getUserNavbarProfileHtml')) {
 
         // Role Badge Styling
         $roleBadgeClass = match($role) {
-            'Admin'   => 'bg-danger',
-            'Faculty' => 'bg-warning text-dark',
-            default   => 'bg-primary',
+            'Admin'     => 'bg-danger',
+            'Faculty'   => 'bg-warning text-dark',
+            'Stat-Dept' => 'bg-info text-dark',
+            default     => 'bg-primary',
         };
 
         $roleLabel = ($role === 'Admin') ? 'Administrator' : $role;
@@ -204,6 +205,11 @@ if (!function_exists('getUserNavbarProfileHtml')) {
             $roleDetailsHtml = "
                 <div class='mb-1'><strong>Security Level:</strong> Level {$secLevel}</div>
                 <div class='mb-1'><strong>Role Scope:</strong> System Administration &amp; Scheduling</div>
+            ";
+        } elseif ($role === 'Stat-Dept') {
+            $roleDetailsHtml = "
+                <div class='mb-1'><strong>Role:</strong> Statistical / Institutional Research</div>
+                <div class='mb-1'><strong>Scope:</strong> Analytics &amp; Reports</div>
             ";
         }
 

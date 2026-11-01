@@ -182,15 +182,16 @@ function createStudent($conn, $userID, $data)
 
     if ($studentType === "Undergraduate") {
 
-        if (empty($data["undergrad_type"])) {
+        $undergradType = str_replace('_', '-', $data["undergrad_type"] ?? "");
+        if (empty($undergradType)) {
             throw new Exception(
                 "Undergraduate type is required."
             );
         }
 
         if (!in_array(
-            $data["undergrad_type"],
-            ["Full_Time", "Part_Time"],
+            $undergradType,
+            ["Full-Time", "Part-Time"],
             true
         )) {
             throw new Exception(
@@ -207,13 +208,13 @@ function createStudent($conn, $userID, $data)
         $stmt->bind_param(
             "is",
             $userID,
-            $data["undergrad_type"]
+            $undergradType
         );
 
         $stmt->execute();
         $stmt->close();
 
-        if ($data["undergrad_type"] === "Full_Time") {
+        if ($undergradType === "Full-Time") {
             $table = "FULL_TIME_UNDERGRADUATE";
         } else {
             $table = "PART_TIME_UNDERGRADUATE";
@@ -221,8 +222,9 @@ function createStudent($conn, $userID, $data)
 
     } else {
 
+        $gradType = str_replace('_', '-', $data["grad_type"] ?? "");
         if (
-            empty($data["grad_type"]) ||
+            empty($gradType) ||
             empty($data["grad_program"])
         ) {
             throw new Exception(
@@ -231,8 +233,8 @@ function createStudent($conn, $userID, $data)
         }
 
         if (!in_array(
-            $data["grad_type"],
-            ["Full_Time", "Part_Time"],
+            $gradType,
+            ["Full-Time", "Part-Time"],
             true
         )) {
             throw new Exception(
@@ -258,7 +260,7 @@ function createStudent($conn, $userID, $data)
         $stmt->bind_param(
             "isss",
             $userID,
-            $data["grad_type"],
+            $gradType,
             $data["grad_program"],
             $thesis
         );
@@ -266,7 +268,7 @@ function createStudent($conn, $userID, $data)
         $stmt->execute();
         $stmt->close();
 
-        if ($data["grad_type"] === "Full_Time") {
+        if ($gradType === "Full-Time") {
             $table = "FULL_TIME_GRADUATE";
         } else {
             $table = "PART_TIME_GRADUATE";
@@ -298,19 +300,20 @@ function createStudent($conn, $userID, $data)
 
 function createFaculty($conn, $userID, $data)
 {
-    if (empty($data["faculty_status"])) {
+    $facultyStatus = str_replace('_', '-', $data["faculty_status"] ?? "");
+    if (empty($facultyStatus)) {
         throw new Exception(
             "Faculty status is required."
         );
     }
 
     if (!in_array(
-    $data["faculty_status"],
-    ["Full_Time", "Part_Time"],
-    true
+        $facultyStatus,
+        ["Full-Time", "Part-Time"],
+        true
     )) {
-    throw new Exception(
-        "Invalid faculty status."
+        throw new Exception(
+            "Invalid faculty status."
         );
     }
 
@@ -334,7 +337,7 @@ function createFaculty($conn, $userID, $data)
         "issss",
         $userID,
         $officeID,
-        $data["faculty_status"],
+        $facultyStatus,
         $specialty,
         $rank
     );
@@ -342,7 +345,7 @@ function createFaculty($conn, $userID, $data)
     $stmt->execute();
     $stmt->close();
 
-    if ($data["faculty_status"] === "Full_Time") {
+    if ($facultyStatus === "Full-Time") {
 
         $noClasses = isset($data["no_classes"])
             ? (int) $data["no_classes"]
@@ -371,6 +374,36 @@ function createFaculty($conn, $userID, $data)
         $stmt->bind_param("i", $userID);
     }
 
+    $stmt->execute();
+    $stmt->close();
+
+    // Why: Assign faculty to DEPARTMENT_ROSTER with 100% time so they are qualified to teach departmental course sections.
+    $facultyDeptId = !empty($data["faculty_department_id"]) ? (int)$data["faculty_department_id"] : (!empty($data["department_id"]) ? (int)$data["department_id"] : null);
+    if (!$facultyDeptId) {
+        throw new Exception("Faculty department assignment is required.");
+    }
+
+    $deptStmt = $conn->prepare("
+        INSERT INTO DEPARTMENT_ROSTER (Department_ID, Faculty_ID, Date_of_Assignment, Percent_Time)
+        VALUES (?, ?, CURRENT_DATE(), 100.00)
+    ");
+    $deptStmt->bind_param("ii", $facultyDeptId, $userID);
+    $deptStmt->execute();
+    $deptStmt->close();
+}
+
+
+function createStatDept($conn, $userID, $data = [])
+{
+    // Why: Stat-Dept staff are full-time institutional research members per SRS regulations (part-time is forbidden).
+    $colCheck = $conn->query("SHOW COLUMNS FROM STAT_DEPT LIKE 'Employment_Status'");
+    if ($colCheck && $colCheck->num_rows > 0) {
+        $stmt = $conn->prepare("INSERT INTO STAT_DEPT (Stat_ID, Employment_Status) VALUES (?, 'Full-Time')");
+        $stmt->bind_param("i", $userID);
+    } else {
+        $stmt = $conn->prepare("INSERT INTO STAT_DEPT (Stat_ID) VALUES (?)");
+        $stmt->bind_param("i", $userID);
+    }
     $stmt->execute();
     $stmt->close();
 }

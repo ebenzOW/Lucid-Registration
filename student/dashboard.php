@@ -72,6 +72,9 @@ $is_spring_reg_open = $springInfo ? (bool)$springInfo['is_reg_open'] : true;
     <title>Student Dashboard | Lucid University</title>
     <!-- Minimal Clean Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        <?= getProfileHoverCardStyles() ?>
+    </style>
 </head>
 <body class="bg-light">
 
