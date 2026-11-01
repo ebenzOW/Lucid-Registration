@@ -682,3 +682,230 @@ function getAllCoursePrerequisitesMap($conn) {
     $stmt->close();
     return $map;
 }
+
+/**
+ * Fetch teaching schedule for a faculty member in a specific semester.
+ * Mirrors getStudentScheduleBySemester with exact table joins, section enrollment counts, and seat stats.
+ * Returns: ['sections' => $sections, 'crns' => $crns, 'total_sections' => count($sections)]
+ */
+function getFacultyScheduleBySemester($conn, $faculty_id, $semester_id) {
+    // Why: Allows faculty dashboards and administrative viewers to retrieve a faculty member's teaching load with live enrollment counts.
+    $stmt = $conn->prepare("
+        SELECT cs.CRN, cs.Course_ID, cs.Section_Number, cs.Semester_ID, cs.Available_seats, cs.Status,
+               c.Course_Name, c.Course_Credits, c.Course_Type,
+               dept.Department_Name,
+               ts.Time_Slot_Day, p.Start_Time, p.End_Time,
+               b.Building_Name, r.Room_NO,
+               (SELECT COUNT(*) FROM ENROLLMENT e WHERE e.CRN = cs.CRN) AS Enrolled_Count
+        FROM COURSE_SECTIONS cs
+        JOIN COURSES c ON cs.Course_ID = c.Course_ID
+        LEFT JOIN DEPARTMENT dept ON c.Department_ID = dept.Department_ID
+        JOIN TIME_SLOT ts ON cs.Time_Slot_ID = ts.Time_Slot_ID
+        JOIN PERIOD p ON ts.Period_ID = p.Period_ID
+        JOIN ROOM r ON cs.Room_ID = r.Room_ID
+        JOIN BUILDING b ON r.Building_ID = b.Building_ID
+        WHERE cs.Faculty_ID = ? AND cs.Semester_ID = ?
+        ORDER BY c.Course_ID ASC, cs.Section_Number ASC
+    ");
+    $stmt->bind_param("ii", $faculty_id, $semester_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+
+    $sections = [];
+    $crns = [];
+    while ($row = $res->fetch_assoc()) {
+        $sections[] = $row;
+        $crns[] = (int)$row['CRN'];
+    }
+    $stmt->close();
+
+    return [
+        'sections'       => $sections,
+        'crns'           => $crns,
+        'total_sections' => count($sections),
+    ];
+}
+
+/**
+ * Query students enrolled in a specific section (CRN).
+ * If $faculty_id is provided, enforces that the calling faculty member teaches this section.
+ * Returns array of student records (Student_ID, full_name, email, class_standing, Attendance_Type, majors, Grade).
+ */
+function getSectionRoster($conn, $crn, $faculty_id = null) {
+    $crn = (int)$crn;
+
+    // Why: Authorization check ensuring faculty can only view rosters for sections assigned to them.
+    if ($faculty_id !== null) {
+        $facCheckStmt = $conn->prepare("SELECT 1 FROM COURSE_SECTIONS WHERE CRN = ? AND Faculty_ID = ?");
+        $facCheckStmt->bind_param("ii", $crn, $faculty_id);
+        $facCheckStmt->execute();
+        $isAuthorized = $facCheckStmt->get_result()->fetch_row();
+        $facCheckStmt->close();
+
+        if (!$isAuthorized) {
+            return null; // Unauthorized access
+        }
+    }
+
+    $stmt = $conn->prepare("
+        SELECT s.Student_ID,
+               u.User_FName, u.User_MName, u.User_LName,
+               l.User_Email,
+               s.Student_Year, s.Student_Type,
+               d.Department_Name,
+               e.Grade,
+               COALESCE(ug.Undergrad_Type, g.Grad_Type, 'Full-Time') AS Attendance_Type,
+               (SELECT GROUP_CONCAT(m.Major_Name SEPARATOR ', ')
+                FROM STUDENT_MAJORS sm
+                JOIN MAJORS m ON sm.Major_ID = m.Major_ID
+                WHERE sm.Student_ID = s.Student_ID) AS Majors
+        FROM ENROLLMENT e
+        JOIN STUDENT s ON e.Student_ID = s.Student_ID
+        JOIN `USER` u ON s.Student_ID = u.User_ID
+        LEFT JOIN LOGIN l ON u.User_ID = l.User_ID
+        LEFT JOIN DEPARTMENT d ON s.Dept_ID = d.Department_ID
+        LEFT JOIN UNDERGRADUATE_STUDENT ug ON s.Student_ID = ug.Student_ID
+        LEFT JOIN GRADUATE_STUDENT g ON s.Student_ID = g.Student_ID
+        WHERE e.CRN = ?
+        ORDER BY u.User_LName ASC, u.User_FName ASC
+    ");
+    $stmt->bind_param("i", $crn);
+    $stmt->execute();
+    $res = $stmt->get_result();
+
+    $yearMap = [
+        1 => 'Freshman',
+        2 => 'Sophomore',
+        3 => 'Junior',
+        4 => 'Senior',
+        5 => 'Graduate'
+    ];
+
+    $roster = [];
+    while ($row = $res->fetch_assoc()) {
+        $fullName = trim($row['User_FName'] . ' ' . (!empty($row['User_MName']) ? $row['User_MName'] . ' ' : '') . $row['User_LName']);
+        $row['full_name'] = $fullName;
+        $yearVal = (int)($row['Student_Year'] ?? 1);
+        if (strcasecmp($row['Student_Type'] ?? '', 'Graduate') === 0) {
+            $row['class_standing'] = 'Graduate';
+        } else {
+            $row['class_standing'] = $yearMap[$yearVal] ?? 'Undergraduate';
+        }
+        $roster[] = $row;
+    }
+    $stmt->close();
+
+    return $roster;
+}
+
+/**
+ * Query advisees assigned to a faculty advisor.
+ * Supports drill-down into advisee profile, holds, transcript, and degree audit.
+ */
+function getFacultyAdvisees($conn, $faculty_id) {
+    // Why: Retrieve all advisee records assigned to a faculty advisor per ADVISOR_STUDENT relation.
+    $stmt = $conn->prepare("
+        SELECT a.Student_ID, a.Date_Assigned,
+               u.User_FName, u.User_MName, u.User_LName,
+               l.User_Email, u.User_PhoneNo,
+               s.Student_Year, s.Student_Type, s.Credits_Earned,
+               d.Department_Name,
+               COALESCE(ug.Undergrad_Type, g.Grad_Type, 'Full-Time') AS Attendance_Type,
+               (SELECT GROUP_CONCAT(m.Major_Name SEPARATOR ', ')
+                FROM STUDENT_MAJORS sm
+                JOIN MAJORS m ON sm.Major_ID = m.Major_ID
+                WHERE sm.Student_ID = s.Student_ID) AS Majors,
+               (SELECT COUNT(*) FROM STUDENT_HOLDS sh WHERE sh.Student_ID = s.Student_ID) AS Active_Holds_Count
+        FROM ADVISOR_STUDENT a
+        JOIN STUDENT s ON a.Student_ID = s.Student_ID
+        JOIN `USER` u ON s.Student_ID = u.User_ID
+        LEFT JOIN LOGIN l ON u.User_ID = l.User_ID
+        LEFT JOIN DEPARTMENT d ON s.Dept_ID = d.Department_ID
+        LEFT JOIN UNDERGRADUATE_STUDENT ug ON s.Student_ID = ug.Student_ID
+        LEFT JOIN GRADUATE_STUDENT g ON s.Student_ID = g.Student_ID
+        WHERE a.Faculty_ID = ?
+        ORDER BY u.User_LName ASC, u.User_FName ASC
+    ");
+    $stmt->bind_param("i", $faculty_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+
+    $yearMap = [
+        1 => 'Freshman',
+        2 => 'Sophomore',
+        3 => 'Junior',
+        4 => 'Senior',
+        5 => 'Graduate'
+    ];
+
+    $advisees = [];
+    while ($row = $res->fetch_assoc()) {
+        $fullName = trim($row['User_FName'] . ' ' . (!empty($row['User_MName']) ? $row['User_MName'] . ' ' : '') . $row['User_LName']);
+        $row['full_name'] = $fullName;
+        $yearVal = (int)($row['Student_Year'] ?? 1);
+        if (strcasecmp($row['Student_Type'] ?? '', 'Graduate') === 0) {
+            $row['class_standing'] = 'Graduate';
+        } else {
+            $row['class_standing'] = $yearMap[$yearVal] ?? 'Undergraduate';
+        }
+        $advisees[] = $row;
+    }
+    $stmt->close();
+
+    return $advisees;
+}
+
+/**
+ * Security Gate: Determine if the active viewer has permission to access a student's records (profile, transcript, audit, holds).
+ * - Students can only access their own records.
+ * - Administrators and Stat-Dept staff can access all student records.
+ * - Faculty can access advisees (ADVISOR_STUDENT) or students enrolled in their sections (COURSE_SECTIONS -> ENROLLMENT).
+ */
+function canViewerAccessStudentRecord($conn, $viewer_id, $viewer_type, $target_student_id) {
+    // Why: Enforce FERPA privacy and role-based access control across all portal record lookups.
+    $viewer_id = (int)$viewer_id;
+    $target_student_id = (int)$target_student_id;
+
+    if ($viewer_type === 'Student') {
+        return $viewer_id === $target_student_id;
+    }
+
+    if ($viewer_type === 'Admin' || $viewer_type === 'Stat-Dept') {
+        return true;
+    }
+
+    if ($viewer_type === 'Faculty') {
+        // 1. Advisee check
+        $advStmt = $conn->prepare("
+            SELECT 1 FROM ADVISOR_STUDENT WHERE Faculty_ID = ? AND Student_ID = ? LIMIT 1
+        ");
+        $advStmt->bind_param("ii", $viewer_id, $target_student_id);
+        $advStmt->execute();
+        $isAdvisee = $advStmt->get_result()->fetch_row();
+        $advStmt->close();
+        if ($isAdvisee) {
+            return true;
+        }
+
+        // 2. Enrolled student check
+        $secStmt = $conn->prepare("
+            SELECT 1 
+            FROM ENROLLMENT e
+            JOIN COURSE_SECTIONS cs ON e.CRN = cs.CRN
+            WHERE cs.Faculty_ID = ? AND e.Student_ID = ?
+            LIMIT 1
+        ");
+        $secStmt->bind_param("ii", $viewer_id, $target_student_id);
+        $secStmt->execute();
+        $isEnrolled = $secStmt->get_result()->fetch_row();
+        $secStmt->close();
+        if ($isEnrolled) {
+            return true;
+        }
+
+        return false;
+    }
+
+    return false;
+}
+

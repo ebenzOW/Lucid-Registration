@@ -66,11 +66,12 @@ $facultyMembers = $facultyStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $facultyStmt->close();
 
 // 4. Fetch Active Time Slots
+// Why: Include all Monday/Wednesday (101-108), Tuesday/Thursday (109-116), and Friday time slots per scheduling policy.
 $tsStmt = $conn->prepare("
     SELECT ts.Time_Slot_ID, ts.Time_Slot_Day, p.Start_Time, p.End_Time
     FROM TIME_SLOT ts
     JOIN PERIOD p ON ts.Period_ID = p.Period_ID
-    WHERE ts.Time_Slot_ID IN (101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 10, 20)
+    WHERE (ts.Time_Slot_ID BETWEEN 101 AND 116) OR ts.Time_Slot_Day = 'Friday'
     ORDER BY ts.Time_Slot_ID ASC
 ");
 $tsStmt->execute();

@@ -20,6 +20,12 @@ $errorMessage = $_SESSION["error_message"] ?? "";
 $newUserData = $_SESSION["new_user_data"] ?? null;
 
 unset($_SESSION["success_message"], $_SESSION["error_message"], $_SESSION["new_user_data"]);
+
+// Fetch all departments for student and faculty assignment
+$deptStmt = $conn->prepare("SELECT Department_ID, Department_Name FROM DEPARTMENT ORDER BY Department_Name ASC");
+$deptStmt->execute();
+$departments = $deptStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$deptStmt->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -128,6 +134,7 @@ unset($_SESSION["success_message"], $_SESSION["error_message"], $_SESSION["new_u
                                 <option value="Admin">Administrator</option>
                                 <option value="Student">Student</option>
                                 <option value="Faculty">Faculty</option>
+                                <option value="Stat-Dept">Statistical Department</option>
                             </select>
                         </div>
                         <div class="col-md-4">
@@ -217,8 +224,13 @@ unset($_SESSION["success_message"], $_SESSION["error_message"], $_SESSION["new_u
                                 <input type="number" name="student_year" id="student_year" class="form-control" min="1" max="5" placeholder="1=Freshman, 4=Senior, 5=Grad">
                             </div>
                             <div class="col-md-4">
-                                <label for="department_id" class="form-label small fw-bold">Department ID</label>
-                                <input type="number" name="department_id" id="department_id" class="form-control" placeholder="e.g. 1 for CS">
+                                <label for="department_id" class="form-label small fw-bold">Department</label>
+                                <select name="department_id" id="department_id" class="form-select">
+                                    <option value="">Select Department (Optional)</option>
+                                    <?php foreach ($departments as $dept): ?>
+                                        <option value="<?= (int)$dept['Department_ID'] ?>"><?= htmlspecialchars($dept['Department_Name']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
                             </div>
                             <div class="col-md-4">
                                 <label for="student_level" class="form-label small fw-bold">Student Level <span class="text-danger">*</span></label>
@@ -236,8 +248,8 @@ unset($_SESSION["success_message"], $_SESSION["error_message"], $_SESSION["new_u
                                         <label for="undergrad_type" class="form-label small fw-bold">Undergraduate Type <span class="text-danger">*</span></label>
                                         <select name="undergrad_type" id="undergrad_type" class="form-select">
                                             <option value="">Select Attendance</option>
-                                            <option value="Full_Time">Full-Time</option>
-                                            <option value="Part_Time">Part-Time</option>
+                                            <option value="Full-Time">Full-Time</option>
+                                            <option value="Part-Time">Part-Time</option>
                                         </select>
                                     </div>
                                 </div>
@@ -250,8 +262,8 @@ unset($_SESSION["success_message"], $_SESSION["error_message"], $_SESSION["new_u
                                         <label for="grad_type" class="form-label small fw-bold">Graduate Type <span class="text-danger">*</span></label>
                                         <select name="grad_type" id="grad_type" class="form-select">
                                             <option value="">Select Attendance</option>
-                                            <option value="Full_Time">Full-Time</option>
-                                            <option value="Part_Time">Part-Time</option>
+                                            <option value="Full-Time">Full-Time</option>
+                                            <option value="Part-Time">Part-Time</option>
                                         </select>
                                     </div>
                                     <div class="col-md-4">
@@ -283,16 +295,36 @@ unset($_SESSION["success_message"], $_SESSION["error_message"], $_SESSION["new_u
                                 <input type="text" name="office_id" id="office_id" class="form-control" placeholder="e.g. ACAD-201">
                             </div>
                             <div class="col-md-4">
+                                <label for="faculty_department_id" class="form-label small fw-bold">Department <span class="text-danger">*</span></label>
+                                <select name="faculty_department_id" id="faculty_department_id" class="form-select">
+                                    <option value="">Select Department</option>
+                                    <?php foreach ($departments as $dept): ?>
+                                        <option value="<?= (int)$dept['Department_ID'] ?>"><?= htmlspecialchars($dept['Department_Name']) ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
                                 <label for="faculty_status" class="form-label small fw-bold">Faculty Status <span class="text-danger">*</span></label>
                                 <select name="faculty_status" id="faculty_status" class="form-select">
                                     <option value="">Select Status</option>
-                                    <option value="Full_Time">Full-Time</option>
-                                    <option value="Part_Time">Part-Time</option>
+                                    <option value="Full-Time">Full-Time</option>
+                                    <option value="Part-Time">Part-Time</option>
                                 </select>
                             </div>
                             <div class="col-md-4">
                                 <label for="no_classes" class="form-label small fw-bold">Number of Classes</label>
                                 <input type="number" name="no_classes" id="no_classes" class="form-control" min="0" value="0">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="section_Stat-Dept" class="subtype-section mb-4 p-3 border rounded bg-light" style="display: none;">
+                        <h5 class="fw-bold text-dark border-bottom pb-2 mb-3">Statistical Department Details</h5>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label for="stat_employment_status" class="form-label small fw-bold">Employment Status</label>
+                                <input type="text" name="stat_employment_status" id="stat_employment_status" class="form-control" value="Full-Time" readonly>
+                                <div class="form-text text-muted">Stat-Dept staff must be Full-Time per SRS regulations.</div>
                             </div>
                         </div>
                     </div>

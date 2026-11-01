@@ -11,8 +11,10 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 $userType = $_POST["user_type"] ?? "";
 
 try {
+    // Why: SRS rules forbid read-only administrators (Security Level 1) from creating users.
+    requireAdminWriteAccess();
 
-    if (!in_array($userType, ["Admin", "Student", "Faculty"], true)) {
+    if (!in_array($userType, ["Admin", "Student", "Faculty", "Stat-Dept"], true)) {
         throw new Exception("Invalid user type.");
     }
 
@@ -46,6 +48,10 @@ try {
 
     if ($userType === "Faculty") {
         createFaculty($conn, $userID, $_POST);
+    }
+
+    if ($userType === "Stat-Dept") {
+        createStatDept($conn, $userID, $_POST);
     }
 
     $conn->commit();

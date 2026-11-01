@@ -34,6 +34,9 @@ $progressPct = ($creditsRequired > 0) ? min(100, round(($total_credits_earned / 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Degree Audit - Lucid University</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        <?= getProfileHoverCardStyles() ?>
+    </style>
 </head>
 <body class="bg-light">
 

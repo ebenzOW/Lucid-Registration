@@ -1,7 +1,7 @@
 <?php
 /**
  * Lucid University Course Registration System
- * Backend POST Handler: Drop Course-Section for Spring 2027 (Semester_ID = 202701)
+ * Backend POST Handler: Drop Course-Section with Concurrency Protection
  */
 
 require_once 'student_guard.php';
@@ -28,24 +28,8 @@ if ($crn === false || $crn <= 0) {
     exit;
 }
 
-// Relative Path Database Connection Handling
-if (file_exists(__DIR__ . '/../dblogin.php')) {
-    require_once __DIR__ . '/../dblogin.php';
-}
-
-if (!isset($conn) || !($conn instanceof mysqli)) {
-    if (isset($hostname) && isset($username) && isset($db)) {
-        $conn = new mysqli($hostname, $username, $password ?? '', $db);
-    } elseif (file_exists(__DIR__ . '/../db_connect.php')) {
-        require_once __DIR__ . '/../db_connect.php';
-    }
-}
-
-if (!isset($conn) || $conn->connect_error) {
-    $_SESSION['flash_error'] = "Database connection error. Please try again later.";
-    header("Location: register.php");
-    exit;
-}
+// Database Connection
+require_once '../db_connect.php';
 
 // 1. Verify that the student is actually enrolled in this section
 $enrollCheckStmt = $conn->prepare("
@@ -70,12 +54,10 @@ $course_id   = $enrollRow['Course_ID'];
 $semester_id = (int)$enrollRow['Semester_ID'];
 
 // 2. Check Drop Deadline in INFORMATION_RELATION for this section's semester
+// Why: Enforce academic calendar deadline; courses cannot be dropped after Last_Day_Of_Dropping_Course.
 $dropWinStmt = $conn->prepare("
-    SELECT ir.Last_Day_Of_Dropping_Course, 
-           (CURRENT_DATE() <= ir.Last_Day_Of_Dropping_Course) AS can_drop,
-           s.Semester_Name, s.Semester_Year
+    SELECT (CURRENT_DATE() <= ir.Last_Day_Of_Dropping_Course) AS can_drop
     FROM INFORMATION_RELATION ir
-    JOIN SEMESTER s ON ir.Semester_ID = s.Semester_ID
     WHERE ir.Semester_ID = ?
 ");
 $dropWinStmt->bind_param("i", $semester_id);
@@ -85,23 +67,43 @@ $dropWinRow = $dropWinRes->fetch_assoc();
 $dropWinStmt->close();
 
 if (!$dropWinRow || !(int)$dropWinRow['can_drop']) {
-    $semLabel = $dropWinRow ? ($dropWinRow['Semester_Name'] . ' ' . $dropWinRow['Semester_Year']) : "this semester";
-    $_SESSION['flash_error'] = "The deadline to drop courses for " . $semLabel . " has passed.";
+    $_SESSION['flash_error'] = "The deadline to drop courses for this semester has passed.";
     header("Location: register.php");
     exit;
 }
 
-// 3. Perform atomic drop transaction
+// 3. Check for Active Account Holds
+// Why: Students with active holds cannot drop or add courses per SRS hold constraints.
+$holdCheckStmt = $conn->prepare("SELECT COUNT(*) AS cnt FROM STUDENT_HOLDS WHERE Student_ID = ?");
+$holdCheckStmt->bind_param("i", $student_id);
+$holdCheckStmt->execute();
+$holdCheckRes = $holdCheckStmt->get_result();
+$holdCount = (int)($holdCheckRes->fetch_assoc()['cnt'] ?? 0);
+$holdCheckStmt->close();
+
+if ($holdCount > 0) {
+    $_SESSION['flash_error'] = "Cannot drop course: You have an active hold on your account.";
+    header("Location: register.php");
+    exit;
+}
+
+// 4. Perform atomic drop transaction with row-level locking
 try {
     $conn->begin_transaction();
 
-    // Remove from ENROLLMENT
+    // Why: Row-lock the COURSE_SECTIONS record to prevent race conditions during seat mutations.
+    $lockStmt = $conn->prepare("SELECT Available_seats FROM COURSE_SECTIONS WHERE CRN = ? FOR UPDATE");
+    $lockStmt->bind_param("i", $crn);
+    $lockStmt->execute();
+    $lockStmt->close();
+
+    // Delete the record from ENROLLMENT
     $delStmt = $conn->prepare("DELETE FROM ENROLLMENT WHERE CRN = ? AND Student_ID = ?");
     $delStmt->bind_param("ii", $crn, $student_id);
     $delStmt->execute();
     $delStmt->close();
 
-    // Increment Available_seats back in COURSE_SECTIONS
+    // Increment seat availability
     $incStmt = $conn->prepare("UPDATE COURSE_SECTIONS SET Available_seats = Available_seats + 1 WHERE CRN = ?");
     $incStmt->bind_param("i", $crn);
     $incStmt->execute();
@@ -114,7 +116,7 @@ try {
     exit;
 
 } catch (Exception $e) {
-    if ($conn) {
+    if (isset($conn) && $conn->in_transaction) {
         $conn->rollback();
     }
     $_SESSION['flash_error'] = "Failed to drop course due to a system error: " . $e->getMessage();

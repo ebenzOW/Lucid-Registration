@@ -23,6 +23,9 @@ $room_id         = trim($_POST['room_id'] ?? '');
 $available_seats = filter_var($_POST['available_seats'] ?? null, FILTER_VALIDATE_INT);
 
 try {
+    // Why: SRS rules forbid read-only administrators (Security Level 1) from creating course sections.
+    requireAdminWriteAccess();
+
     // 0. Preliminary Presence Check
     if (!$semester_id || empty($course_id) || !$faculty_id || !$time_slot_id || empty($room_id) || !$available_seats) {
         throw new Exception("Please fill in all required fields to create a course section.");
@@ -86,12 +89,14 @@ try {
 
     // 4. Constraint 4: Faculty Teaching Load Limit Check
     // Part-Time max = 1 section; Full-Time max = 2 sections per semester
+    // Why: Row-lock the faculty record to prevent concurrent section creations from exceeding maximum teaching loads.
     $facStmt = $conn->prepare("
         SELECT f.Faculty_Type, u.User_FName, u.User_LName,
                (SELECT COUNT(*) FROM COURSE_SECTIONS cs WHERE cs.Faculty_ID = f.Faculty_ID AND cs.Semester_ID = ?) AS current_load
         FROM FACULTY f
         JOIN `USER` u ON f.Faculty_ID = u.User_ID
         WHERE f.Faculty_ID = ?
+        FOR UPDATE
     ");
     $facStmt->bind_param("ii", $semester_id, $faculty_id);
     $facStmt->execute();
@@ -110,6 +115,7 @@ try {
 
     // 5. Constraint 5: Faculty Time-Slot Conflict Check
     // Verify faculty is not already assigned to another section in the same semester and time slot
+    // Why: Row-lock existing faculty schedule rows to prevent race-condition schedule overlaps.
     $facConflictStmt = $conn->prepare("
         SELECT cs.CRN, cs.Course_ID
         FROM COURSE_SECTIONS cs
@@ -121,6 +127,7 @@ try {
               OR (ts_exist.Time_Slot_Day = ts_new.Time_Slot_Day AND ts_exist.Period_ID = ts_new.Period_ID)
           )
         LIMIT 1
+        FOR UPDATE
     ");
     $facConflictStmt->bind_param("iii", $time_slot_id, $semester_id, $faculty_id);
     $facConflictStmt->execute();
@@ -133,6 +140,7 @@ try {
 
     // 6. Constraint 6: Room Time-Slot Conflict Check
     // Verify room is not already booked during the same semester and time slot
+    // Why: Row-lock room bookings to prevent double-booking the same room during concurrent requests.
     $roomConflictStmt = $conn->prepare("
         SELECT cs.CRN, cs.Course_ID
         FROM COURSE_SECTIONS cs
@@ -144,6 +152,7 @@ try {
               OR (ts_exist.Time_Slot_Day = ts_new.Time_Slot_Day AND ts_exist.Period_ID = ts_new.Period_ID)
           )
         LIMIT 1
+        FOR UPDATE
     ");
     $roomConflictStmt->bind_param("iis", $time_slot_id, $semester_id, $room_id);
     $roomConflictStmt->execute();
@@ -160,6 +169,7 @@ try {
         SELECT COALESCE(MAX(Section_Number), 0) + 1 AS next_sec
         FROM COURSE_SECTIONS
         WHERE Course_ID = ? AND Semester_ID = ?
+        FOR UPDATE
     ");
     $secNumStmt->bind_param("si", $course_id, $semester_id);
     $secNumStmt->execute();
@@ -171,10 +181,12 @@ try {
     $termDigit = (substr((string)$semester_id, 4, 2) === '08') ? '2' : '1';
     $baseCrn = (int)($yrShort . $termDigit . '000');
 
+    // Why: Row-lock max CRN lookup to prevent duplicate CRN assignment in high concurrency.
     $crnStmt = $conn->prepare("
         SELECT COALESCE(MAX(CRN), ?) AS max_sem_crn
         FROM COURSE_SECTIONS
         WHERE Semester_ID = ?
+        FOR UPDATE
     ");
     $crnStmt->bind_param("ii", $baseCrn, $semester_id);
     $crnStmt->execute();
