@@ -1,7 +1,6 @@
 # =========================
 # Security & Credentials
 # =========================
-/DataGenSeeds
 db_login.php
 dblogin.php
 db_login_template.php
