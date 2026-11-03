@@ -74,7 +74,6 @@ BEGIN
     DECLARE v_crn INT;
     DECLARE v_course VARCHAR(15);
     DECLARE v_pri INT;
-    DECLARE v_pref_other INT;
     DECLARE v_salt VARCHAR(40);
     DECLARE v_x DECIMAL(6,4);
     DECLARE v_floor DECIMAL(4,2);

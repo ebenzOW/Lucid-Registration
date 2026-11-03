@@ -17,7 +17,8 @@ $audit = getDegreeAuditData($conn, $student_id);
 
 $student_name         = $profile['full_name'];
 $student_type         = $profile['Student_Type'] ?? 'Undergraduate';
-$total_credits_earned = $transcript['total_credits'];
+// Why: Continuing graduate students count only degree-level credits toward their graduate requirement.
+$total_credits_earned = $transcript['level_credits_earned'] ?? $transcript['total_credits'];
 
 $primaryMajor   = $audit['primary_major'] ?? null;
 $secondaryMajor = $audit['secondary_major'] ?? null;

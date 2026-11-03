@@ -14,11 +14,16 @@ require_once '../db_connect.php';
 require_once 'academic_helpers.php';
 require_once '../profile_hover_card.php';
 
-// 1. Fetch Student Demographic & Academic Profile
+// 1. Enforce failed prerequisites and fetch notices
+$notices = checkAndEnforceFailedPrerequisites($conn, $student_id);
+
+// 2. Fetch Student Demographic & Academic Profile
 $profile = getStudentProfile($conn, $student_id);
 if (!$profile) {
     die("Student profile record not found.");
 }
+
+$navbarProfileHtml = getUserNavbarProfileHtml($conn, $student_id, 'Student');
 
 $student_full_name = $profile['full_name'];
 $student_type      = $profile['Student_Type'] ?? 'Undergraduate';
@@ -28,30 +33,16 @@ $department_name   = $profile['Department_Name'] ?? 'General Academics';
 $primary_major     = $profile['primary_major']['Major_Name'] ?? 'Undeclared';
 $minor_name        = $profile['minor']['Minor_Name'] ?? 'None';
 
-// 2. Fetch Transcript Totals
+// 3. Fetch Transcript Totals
 $transcript = getStudentTranscriptData($conn, $student_id);
 $cum_gpa       = $transcript['cum_gpa'];
 $total_credits = $transcript['total_credits'];
 
-// 3. Fetch Active Account Holds
-$holdStmt = $conn->prepare("
-    SELECT h.Hold_Type, sh.Hold_Date
-    FROM STUDENT_HOLDS sh
-    JOIN HOLDS h ON sh.Hold_ID = h.Hold_ID
-    WHERE sh.Student_ID = ?
-    ORDER BY sh.Hold_Date DESC
-");
-$holdStmt->bind_param("i", $student_id);
-$holdStmt->execute();
-$holdRes = $holdStmt->get_result();
-$holds = [];
-while ($hRow = $holdRes->fetch_assoc()) {
-    $holds[] = $hRow;
-}
-$holdStmt->close();
+// 4. Fetch Active Account Holds
+$holds = getStudentHolds($conn, $student_id);
 $has_active_holds = !empty($holds);
 
-// 4. Fetch Enrolled Schedules for Current (Fall 2026) and Next (Spring 2027) Terms
+// 5. Fetch Enrolled Schedules for Current (Fall 2026) and Next (Spring 2027) Terms
 $fallSchedule   = getStudentScheduleBySemester($conn, $student_id, 202608);
 $springSchedule = getStudentScheduleBySemester($conn, $student_id, 202701);
 
@@ -60,7 +51,7 @@ $fallCredits   = $fallSchedule['total_credits'];
 $springCourses = $springSchedule['courses'];
 $springCredits = $springSchedule['total_credits'];
 
-// 5. Fetch Spring 2027 Registration Window
+// 6. Fetch Spring 2027 Semester & Registration Window Metadata
 $springInfo = getSemesterInfo($conn, 202701);
 $is_spring_reg_open = $springInfo ? (bool)$springInfo['is_reg_open'] : true;
 ?>
@@ -111,7 +102,7 @@ $is_spring_reg_open = $springInfo ? (bool)$springInfo['is_reg_open'] : true;
                 </ul>
                 <div class="d-flex align-items-center gap-3">
                     <span class="navbar-text text-white small d-none d-lg-inline">
-                        Welcome, <?= getUserNavbarProfileHtml($conn, $student_id, 'Student') ?>
+                        Welcome, <?= $navbarProfileHtml ?>
                     </span>
                     <form action="../logout.php" method="POST" class="m-0">
                         <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
@@ -122,6 +113,18 @@ $is_spring_reg_open = $springInfo ? (bool)$springInfo['is_reg_open'] : true;
     </nav>
 
     <div class="container mb-5">
+
+        <!-- Prerequisite Auto-Drop Enforcement Banner -->
+        <?php if (!empty($notices)): ?>
+            <div class="alert alert-danger border-2 p-3 mb-4 shadow-sm" role="alert">
+                <h5 class="alert-heading fw-bold mb-2">Prerequisite Enforcement Notice</h5>
+                <ul class="mb-0">
+                    <?php foreach ($notices as $notice): ?>
+                        <li><?= htmlspecialchars($notice, ENT_QUOTES, 'UTF-8') ?></li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
+        <?php endif; ?>
 
         <!-- Simplified Active Holds Banner -->
         <?php if ($has_active_holds): ?>
@@ -142,7 +145,7 @@ $is_spring_reg_open = $springInfo ? (bool)$springInfo['is_reg_open'] : true;
                 <div class="row align-items-center">
                     <div class="col-md-8">
                         <h2 class="fw-bold mb-1">
-                            Welcome back, <?= getUserNavbarProfileHtml($conn, $student_id, 'Student', 'text-dark') ?>!
+                            Welcome back, <?= htmlspecialchars($student_full_name, ENT_QUOTES, 'UTF-8') ?>!
                         </h2>
                         <p class="text-secondary mb-3">
                             Student ID: <strong><?= (int)$student_id ?></strong> &bull; 
@@ -164,6 +167,21 @@ $is_spring_reg_open = $springInfo ? (bool)$springInfo['is_reg_open'] : true;
                                 </span>
                             <?php endif; ?>
                         </div>
+
+                        <!-- Semester Metadata Badges -->
+                        <?php if ($springInfo): ?>
+                            <div class="mt-3 pt-3 border-top d-flex flex-wrap gap-2 align-items-center">
+                                <span class="badge text-bg-dark fs-6 py-2 px-3">
+                                    Spring 2027 Term: <?= !empty($springInfo['Start_Date']) ? htmlspecialchars($springInfo['Start_Date'], ENT_QUOTES, 'UTF-8') : 'TBD' ?> &ndash; <?= !empty($springInfo['End_Date']) ? htmlspecialchars($springInfo['End_Date'], ENT_QUOTES, 'UTF-8') : 'TBD' ?>
+                                </span>
+                                <span class="badge text-bg-info text-dark fs-6 py-2 px-3">
+                                    Last Day of Registration: <?= !empty($springInfo['Last_Day_Of_Registration']) ? htmlspecialchars($springInfo['Last_Day_Of_Registration'], ENT_QUOTES, 'UTF-8') : 'TBD' ?>
+                                </span>
+                                <span class="badge text-bg-warning text-dark fs-6 py-2 px-3">
+                                    Last Day of Dropping: <?= !empty($springInfo['Last_Day_Of_Dropping_Course']) ? htmlspecialchars($springInfo['Last_Day_Of_Dropping_Course'], ENT_QUOTES, 'UTF-8') : 'TBD' ?>
+                                </span>
+                            </div>
+                        <?php endif; ?>
                     </div>
                     <div class="col-md-4 text-md-end mt-3 mt-md-0">
                         <a href="register.php" class="btn btn-primary px-3 py-2">

@@ -22,22 +22,7 @@ if (!$profile) {
 $student_full_name = $profile['full_name'];
 
 // 2. Query Student Active Holds
-$holdStmt = $conn->prepare("
-    SELECT sh.Hold_ID, h.Hold_Type, sh.Hold_Date
-    FROM STUDENT_HOLDS sh
-    JOIN HOLDS h ON sh.Hold_ID = h.Hold_ID
-    WHERE sh.Student_ID = ?
-    ORDER BY sh.Hold_Date DESC
-");
-$holdStmt->bind_param("i", $student_id);
-$holdStmt->execute();
-$holdRes = $holdStmt->get_result();
-$holds = [];
-while ($hRow = $holdRes->fetch_assoc()) {
-    $holds[] = $hRow;
-}
-$holdStmt->close();
-
+$holds = getStudentHolds($conn, $student_id);
 $has_active_holds = !empty($holds);
 ?>
 <!DOCTYPE html>

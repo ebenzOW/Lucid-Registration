@@ -15,48 +15,18 @@ require_once 'academic_helpers.php';
 require_once '../profile_hover_card.php';
 
 // 1. Fetch Student Profile & Academic Classification
-$studStmt = $conn->prepare("
-    SELECT u.User_FName, u.User_MName, u.User_LName,
-           s.Student_ID, s.Student_Type, s.Student_Year, s.Credits_Earned,
-           COALESCE(ug.Undergrad_Type, g.Grad_Type, 'Full-Time') AS Attendance_Type
-    FROM `USER` u
-    JOIN STUDENT s ON u.User_ID = s.Student_ID
-    LEFT JOIN UNDERGRADUATE_STUDENT ug ON s.Student_ID = ug.Student_ID
-    LEFT JOIN GRADUATE_STUDENT g ON s.Student_ID = g.Student_ID
-    WHERE s.Student_ID = ?
-");
-$studStmt->bind_param("i", $student_id);
-$studStmt->execute();
-$studRes = $studStmt->get_result();
-$student = $studRes->fetch_assoc();
-$studStmt->close();
-
+$student = getStudentProfile($conn, $student_id);
 if (!$student) {
     die("Student profile record not found.");
 }
 
-$student_full_name = trim($student['User_FName'] . ' ' . ($student['User_MName'] ? $student['User_MName'] . ' ' : '') . $student['User_LName']);
+$student_full_name = $student['full_name'];
 $student_type      = $student['Student_Type'];
 $attendance_type   = $student['Attendance_Type'] ?: 'Full-Time';
-$max_credits       = (strcasecmp($attendance_type, 'Part-Time') === 0) ? 8 : 16;
+$max_credits       = $student['max_credits'];
 
 // 2. Fetch Active Account Holds
-$holdStmt = $conn->prepare("
-    SELECT h.Hold_Type, sh.Hold_Date
-    FROM STUDENT_HOLDS sh
-    JOIN HOLDS h ON sh.Hold_ID = h.Hold_ID
-    WHERE sh.Student_ID = ?
-    ORDER BY sh.Hold_Date DESC
-");
-$holdStmt->bind_param("i", $student_id);
-$holdStmt->execute();
-$holdRes = $holdStmt->get_result();
-$holds = [];
-while ($hRow = $holdRes->fetch_assoc()) {
-    $holds[] = $hRow;
-}
-$holdStmt->close();
-
+$holds = getStudentHolds($conn, $student_id);
 $has_active_holds = !empty($holds);
 
 // 3. Fetch Semesters where course sections exist AND registration is not past Last_Day_Of_Registration
@@ -94,19 +64,7 @@ if (!$selected_sem_id || !isset($availableSemesters[$selected_sem_id])) {
 // Fetch registration window for the selected semester
 $currentSem = $availableSemesters[$selected_sem_id] ?? null;
 if (!$currentSem) {
-    $singleWinStmt = $conn->prepare("
-        SELECT s.Semester_ID, s.Semester_Name, s.Semester_Year,
-               ir.Last_Day_Of_Registration, ir.Last_Day_Of_Dropping_Course,
-               (CURRENT_DATE() <= ir.Last_Day_Of_Registration) AS is_reg_open,
-               (CURRENT_DATE() <= ir.Last_Day_Of_Dropping_Course) AS is_drop_open
-        FROM SEMESTER s
-        LEFT JOIN INFORMATION_RELATION ir ON s.Semester_ID = ir.Semester_ID
-        WHERE s.Semester_ID = ?
-    ");
-    $singleWinStmt->bind_param("i", $selected_sem_id);
-    $singleWinStmt->execute();
-    $currentSem = $singleWinStmt->get_result()->fetch_assoc();
-    $singleWinStmt->close();
+    $currentSem = getSemesterInfo($conn, $selected_sem_id);
 }
 
 $semester_label = $currentSem ? ($currentSem['Semester_Name'] . ' ' . $currentSem['Semester_Year']) : "Spring 2027";

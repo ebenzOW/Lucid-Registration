@@ -295,6 +295,56 @@ function createStudent($conn, $userID, $data)
     $stmt->bind_param("i", $userID);
     $stmt->execute();
     $stmt->close();
+
+    // Automatically assign default department major in STUDENT_MAJORS and optional eligible advisor
+    if ($departmentID) {
+        // Why: Automatically assign student's default departmental major per SRS degree mapping rules.
+        if ($studentType === "Undergraduate") {
+            $majorId = 100 + ($departmentID * 2) - 1;
+        } else {
+            $gradProg = strtoupper(trim((string)($data["grad_program"] ?? '')));
+            if (str_contains($gradProg, 'PHD')) {
+                $majorId = 124 + $departmentID;
+            } else {
+                $majorId = 100 + ($departmentID * 2);
+            }
+        }
+
+        $mStmt = $conn->prepare("INSERT INTO STUDENT_MAJORS (Major_ID, Student_ID) VALUES (?, ?)");
+        $mStmt->bind_param("ii", $majorId, $userID);
+        $mStmt->execute();
+        $mStmt->close();
+
+        // Why: Optional admin assignment of an eligible Full-Time faculty advisor in that department with < 15 advisees.
+        if (!empty($data["advisor_id"])) {
+            $advisorId = (int)$data["advisor_id"];
+            $advCheckStmt = $conn->prepare("
+                SELECT 1
+                FROM FACULTY f
+                JOIN FULL_TIME_FACULTY ftf ON f.Faculty_ID = ftf.Faculty_ID
+                JOIN DEPARTMENT_ROSTER dr ON f.Faculty_ID = dr.Faculty_ID
+                WHERE f.Faculty_ID = ? AND dr.Department_ID = ?
+                  AND (SELECT COUNT(*) FROM ADVISOR_STUDENT a WHERE a.Faculty_ID = f.Faculty_ID) < 15
+                LIMIT 1
+            ");
+            $advCheckStmt->bind_param("ii", $advisorId, $departmentID);
+            $advCheckStmt->execute();
+            $isEligible = $advCheckStmt->get_result()->fetch_row();
+            $advCheckStmt->close();
+
+            if (!$isEligible) {
+                throw new Exception("Selected advisor is not eligible (must be a full-time faculty member in the student's department with fewer than 15 advisees).");
+            }
+
+            $advAssignStmt = $conn->prepare("
+                INSERT INTO ADVISOR_STUDENT (Faculty_ID, Student_ID, Date_Assigned)
+                VALUES (?, ?, CURRENT_DATE())
+            ");
+            $advAssignStmt->bind_param("ii", $advisorId, $userID);
+            $advAssignStmt->execute();
+            $advAssignStmt->close();
+        }
+    }
 }
 
 

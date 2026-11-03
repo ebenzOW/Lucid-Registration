@@ -46,10 +46,12 @@ BEGIN
             JOIN COURSES c ON cs.Course_ID = c.Course_ID
             WHERE cs.Semester_ID = 202608
               AND c.Course_Type = v_stype
-              -- Enforce major/minor/department rule
+              -- Enforce major/minor/department rule (including cross-department major and minor requirements)
               AND (
                   c.Department_ID IN (SELECT m.Department_ID FROM STUDENT_MAJORS sm JOIN MAJORS m ON sm.Major_ID = m.Major_ID WHERE sm.Student_ID = v_sid)
                   OR c.Department_ID IN (SELECT mn.Department_ID FROM STUDENT_MINORS smn JOIN MINORS mn ON smn.Minor_ID = mn.Minor_ID WHERE smn.Student_ID = v_sid)
+                  OR c.Course_ID IN (SELECT mr.Course_ID FROM STUDENT_MAJORS sm JOIN MAJOR_REQUIREMENTS mr ON sm.Major_ID = mr.Major_ID WHERE sm.Student_ID = v_sid)
+                  OR c.Course_ID IN (SELECT mnr.Course_ID FROM STUDENT_MINORS smn JOIN MINOR_REQUIREMENTS mnr ON smn.Minor_ID = mnr.Minor_ID WHERE smn.Student_ID = v_sid)
               )
               -- Strict seat cap check
               AND cs.Available_seats > 0

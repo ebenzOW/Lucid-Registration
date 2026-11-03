@@ -30,6 +30,28 @@ function getGradePoint($grade) {
 }
 
 /**
+ * Fetch active holds for a student.
+ */
+function getStudentHolds($conn, $student_id) {
+    $stmt = $conn->prepare("
+        SELECT sh.Hold_ID, h.Hold_Type, sh.Hold_Date
+        FROM STUDENT_HOLDS sh
+        JOIN HOLDS h ON sh.Hold_ID = h.Hold_ID
+        WHERE sh.Student_ID = ?
+        ORDER BY sh.Hold_Date DESC
+    ");
+    $stmt->bind_param("i", $student_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    $holds = [];
+    while ($row = $res->fetch_assoc()) {
+        $holds[] = $row;
+    }
+    $stmt->close();
+    return $holds;
+}
+
+/**
  * Fetch demographic profile, department, and declared major/minor.
  */
 function getStudentProfile($conn, $student_id) {
@@ -117,6 +139,9 @@ function getStudentProfile($conn, $student_id) {
     $profile['minors'] = $minors;
     $profile['minor'] = $minors[0] ?? null;
 
+    // Compute maximum allowable credit limit based on attendance type
+    $profile['max_credits'] = (strcasecmp($profile['Attendance_Type'] ?? '', 'Part-Time') === 0) ? 8 : 16;
+
     return $profile;
 }
 
@@ -129,10 +154,12 @@ function getStudentTranscriptData($conn, $student_id) {
     $stmt = $conn->prepare("
         SELECT sh.Course_ID, sh.Semester_ID, sh.Grade,
                s.Semester_Name, s.Semester_Year, s.Start_Date,
-               c.Course_Name, c.Course_Credits
+               c.Course_Name, c.Course_Credits, c.Course_Type,
+               st.Student_Type
         FROM STUDENT_HISTORY sh
         JOIN SEMESTER s ON sh.Semester_ID = s.Semester_ID
         JOIN COURSES c ON sh.Course_ID = c.Course_ID
+        JOIN STUDENT st ON sh.Student_ID = st.Student_ID
         WHERE sh.Student_ID = ?
         ORDER BY s.Semester_Year ASC, s.Start_Date ASC, c.Course_ID ASC
     ");
@@ -141,6 +168,7 @@ function getStudentTranscriptData($conn, $student_id) {
     $res = $stmt->get_result();
 
     $terms = [];
+    $levelCreditsEarned = 0;
 
     // Group courses by semester and compute quality points for GPA math
     while ($row = $res->fetch_assoc()) {
@@ -155,6 +183,11 @@ function getStudentTranscriptData($conn, $student_id) {
 
         $row['credits_attempted'] = $credits;
         $row['credits_earned'] = $creditsEarned;
+
+        // Why: Continuing graduate students who earned a bachelor's at Lucid have undergraduate courses in STUDENT_HISTORY that must not count toward their 24-credit M.S. or 60-credit Ph.D. degree audit requirement.
+        if ($isPassing && strcasecmp($row['Course_Type'] ?? '', $row['Student_Type'] ?? '') === 0) {
+            $levelCreditsEarned += $creditsEarned;
+        }
 
         if (!isset($terms[$semId])) {
             $terms[$semId] = [
@@ -205,13 +238,14 @@ function getStudentTranscriptData($conn, $student_id) {
         'terms' => $terms,
         'cum_gpa' => $cumGpa,
         'total_credits' => $totalCreditsEarned,
+        'level_credits_earned' => $levelCreditsEarned,
     ];
 }
 
 /**
- * Helper to evaluate a list of requirements against completed history and active Fall 2026 courses.
+ * Helper to evaluate a list of requirements against completed history and active courses.
  */
-function evaluateRequirementList($reqList, $historyCourses, $fallEnrolled) {
+function evaluateRequirementList($reqList, $historyCourses, $activeEnrolled) {
     $evaluated = [];
 
     foreach ($reqList as $req) {
@@ -254,8 +288,8 @@ function evaluateRequirementList($reqList, $historyCourses, $fallEnrolled) {
             }
         }
 
-        // Check active enrollment in Fall 2026 if not already satisfied
-        if ($status !== 'Satisfied' && isset($fallEnrolled[$cid])) {
+        // Check active enrollment in current/upcoming terms if not already satisfied
+        if ($status !== 'Satisfied' && isset($activeEnrolled[$cid])) {
             $status = 'In Progress';
             $badgeClass = 'text-bg-primary';
         }
@@ -319,20 +353,19 @@ function getDegreeAuditData($conn, $student_id) {
     }
     $stmt->close();
 
-    // 4. Fetch registered courses in Fall 2026 (Semester_ID = 202608)
-    $fallSemId = 202608;
+    // 4. Fetch all active ungraded enrollments across current and upcoming terms
     $stmt = $conn->prepare("
         SELECT cs.Course_ID
         FROM ENROLLMENT e
         JOIN COURSE_SECTIONS cs ON e.CRN = cs.CRN
-        WHERE e.Student_ID = ? AND cs.Semester_ID = ?
+        WHERE e.Student_ID = ? AND e.Grade IS NULL
     ");
-    $stmt->bind_param("ii", $student_id, $fallSemId);
+    $stmt->bind_param("i", $student_id);
     $stmt->execute();
     $res = $stmt->get_result();
-    $fallEnrolled = [];
+    $activeEnrolled = [];
     while ($row = $res->fetch_assoc()) {
-        $fallEnrolled[$row['Course_ID']] = true;
+        $activeEnrolled[$row['Course_ID']] = true;
     }
     $stmt->close();
 
@@ -356,7 +389,7 @@ function getDegreeAuditData($conn, $student_id) {
         }
         $reqStmt->close();
 
-        $m['requirements'] = evaluateRequirementList($reqs, $historyCourses, $fallEnrolled);
+        $m['requirements'] = evaluateRequirementList($reqs, $historyCourses, $activeEnrolled);
         $majorsData[] = $m;
     }
 
@@ -380,7 +413,7 @@ function getDegreeAuditData($conn, $student_id) {
         }
         $reqStmt->close();
 
-        $min['requirements'] = evaluateRequirementList($reqs, $historyCourses, $fallEnrolled);
+        $min['requirements'] = evaluateRequirementList($reqs, $historyCourses, $activeEnrolled);
         $minorsData[] = $min;
     }
 
@@ -413,6 +446,7 @@ function getSemesterInfo($conn, $semester_id) {
     $stmt = $conn->prepare("
         SELECT s.Semester_ID, s.Semester_Name, s.Semester_Year, s.Start_Date, s.End_Date,
                ir.Last_Day_Of_Registration, ir.Last_Day_Of_Dropping_Course,
+               ir.Date_Of_Midterm_Grade_Recording, ir.Date_Of_Final_Grades_Recording,
                (CURRENT_DATE() <= ir.Last_Day_Of_Registration) AS is_reg_open,
                (CURRENT_DATE() <= ir.Last_Day_Of_Dropping_Course) AS is_drop_open
         FROM SEMESTER s
@@ -644,8 +678,39 @@ function searchMasterSchedule($conn, $filters = []) {
     }
     $stmt->close();
 
-    // Attach course prerequisites map to each section row
-    $prereqMap = getAllCoursePrerequisitesMap($conn);
+    if (empty($results)) {
+        return [];
+    }
+
+    // Attach course prerequisites only for unique courses present in the search results
+    $uniqueCourseIds = array_values(array_unique(array_column($results, 'Course_ID')));
+    $prereqMap = [];
+    if (!empty($uniqueCourseIds)) {
+        $placeholders = implode(',', array_fill(0, count($uniqueCourseIds), '?'));
+        $prereqTypes = str_repeat('s', count($uniqueCourseIds));
+        $pStmt = $conn->prepare("
+            SELECT cp.Course_ID, cp.Prerequisite_Course_ID, c.Course_Name AS Prerequisite_Course_Name
+            FROM COURSE_PREREQUISITE cp
+            JOIN COURSES c ON cp.Prerequisite_Course_ID = c.Course_ID
+            WHERE cp.Course_ID IN ($placeholders)
+            ORDER BY cp.Course_ID ASC, cp.Prerequisite_Course_ID ASC
+        ");
+        $pStmt->bind_param($prereqTypes, ...$uniqueCourseIds);
+        $pStmt->execute();
+        $pRes = $pStmt->get_result();
+        while ($row = $pRes->fetch_assoc()) {
+            $cid = $row['Course_ID'];
+            if (!isset($prereqMap[$cid])) {
+                $prereqMap[$cid] = [];
+            }
+            $prereqMap[$cid][] = [
+                'Course_ID'   => $row['Prerequisite_Course_ID'],
+                'Course_Name' => $row['Prerequisite_Course_Name']
+            ];
+        }
+        $pStmt->close();
+    }
+
     foreach ($results as &$secRow) {
         $cid = $secRow['Course_ID'];
         $secRow['prerequisites'] = $prereqMap[$cid] ?? [];
@@ -907,5 +972,118 @@ function canViewerAccessStudentRecord($conn, $viewer_id, $viewer_type, $target_s
     }
 
     return false;
+}
+
+/**
+ * Prerequisite Gating & Auto-Drop Handler
+ * Why: Students may register for a course if prerequisites are already passed OR currently in progress.
+ * If a student records a failing grade in a prerequisite, the dependent section must be automatically dropped
+ * and a notice posted to their dashboard.
+ */
+function checkAndEnforceFailedPrerequisites($conn, $student_id) {
+    $student_id = (int)$student_id;
+    $notices = [];
+
+    $typeStmt = $conn->prepare("SELECT Student_Type FROM STUDENT WHERE Student_ID = ?");
+    $typeStmt->bind_param("i", $student_id);
+    $typeStmt->execute();
+    $stRow = $typeStmt->get_result()->fetch_assoc();
+    $typeStmt->close();
+
+    $isGrad = (strcasecmp($stRow['Student_Type'] ?? '', 'Graduate') === 0);
+    $minPoint = $isGrad ? 3.0 : 2.0; // Undergrad passing is C (2.0); Graduate passing is B (3.0)
+
+    // 1. Fetch current and upcoming ungraded enrollments
+    $enrStmt = $conn->prepare("
+        SELECT e.CRN, cs.Course_ID, c.Course_Name, cs.Semester_ID
+        FROM ENROLLMENT e
+        JOIN COURSE_SECTIONS cs ON e.CRN = cs.CRN
+        JOIN COURSES c ON cs.Course_ID = c.Course_ID
+        WHERE e.Student_ID = ? AND e.Grade IS NULL
+    ");
+    $enrStmt->bind_param("i", $student_id);
+    $enrStmt->execute();
+    $activeEnrolled = $enrStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $enrStmt->close();
+
+    foreach ($activeEnrolled as $sec) {
+        $crn = (int)$sec['CRN'];
+        $course_id = $sec['Course_ID'];
+
+        // Check prerequisites for this course
+        $pStmt = $conn->prepare("SELECT Prerequisite_Course_ID FROM COURSE_PREREQUISITE WHERE Course_ID = ?");
+        $pStmt->bind_param("s", $course_id);
+        $pStmt->execute();
+        $prereqs = $pStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $pStmt->close();
+
+        foreach ($prereqs as $pr) {
+            $prereq_id = $pr['Prerequisite_Course_ID'];
+
+            // Check student's grade attempts for the prerequisite
+            $gStmt = $conn->prepare("
+                SELECT Grade FROM (
+                    SELECT Grade FROM STUDENT_HISTORY WHERE Student_ID = ? AND Course_ID = ?
+                    UNION ALL
+                    SELECT Grade FROM ENROLLMENT e JOIN COURSE_SECTIONS cs ON e.CRN = cs.CRN 
+                    WHERE e.Student_ID = ? AND cs.Course_ID = ? AND e.Grade IS NOT NULL
+                ) t
+            ");
+            $gStmt->bind_param("isis", $student_id, $prereq_id, $student_id, $prereq_id);
+            $gStmt->execute();
+            $grades = $gStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+            $gStmt->close();
+
+            $hasPassed = false;
+            $hasFailed = false;
+            $lastFailedGrade = '';
+
+            foreach ($grades as $g) {
+                $pt = getGradePoint($g['Grade']);
+                if ($pt !== null && $pt >= $minPoint) {
+                    $hasPassed = true;
+                } elseif ($pt !== null && $pt < $minPoint) {
+                    $hasFailed = true;
+                    $lastFailedGrade = $g['Grade'];
+                }
+            }
+
+            // Check if student is actively taking it (in progress)
+            $ipStmt = $conn->prepare("
+                SELECT 1 FROM ENROLLMENT e JOIN COURSE_SECTIONS cs ON e.CRN = cs.CRN
+                WHERE e.Student_ID = ? AND cs.Course_ID = ? AND e.Grade IS NULL AND cs.CRN != ?
+            ");
+            $ipStmt->bind_param("isi", $student_id, $prereq_id, $crn);
+            $ipStmt->execute();
+            $isInProgress = $ipStmt->get_result()->fetch_row();
+            $ipStmt->close();
+
+            // If failed and not currently in progress or passed, drop dependent course
+            if ($hasFailed && !$hasPassed && !$isInProgress) {
+                $conn->begin_transaction();
+                $lock = $conn->prepare("SELECT Available_seats FROM COURSE_SECTIONS WHERE CRN = ? FOR UPDATE");
+                $lock->bind_param("i", $crn);
+                $lock->execute();
+                $lock->close();
+
+                $del = $conn->prepare("DELETE FROM ENROLLMENT WHERE CRN = ? AND Student_ID = ?");
+                $del->bind_param("ii", $crn, $student_id);
+                $del->execute();
+                $del->close();
+
+                $inc = $conn->prepare("UPDATE COURSE_SECTIONS SET Available_seats = Available_seats + 1 WHERE CRN = ?");
+                $inc->bind_param("i", $crn);
+                $inc->execute();
+                $inc->close();
+
+                $conn->commit();
+
+                $notices[] = "You were automatically dropped from {$course_id} - {$sec['Course_Name']} (CRN: {$crn}) because prerequisite {$prereq_id} was not passed (Grade: {$lastFailedGrade}).";
+                break;
+            }
+        }
+    }
+
+    return $notices;
 }
 

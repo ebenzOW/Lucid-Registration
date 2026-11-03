@@ -1,4 +1,4 @@
--- 1. INSERT FALL 2026 & SPRING 2027 SEMESTERS
+-- 1. Populate SEMESTER (Includes academic Start_Date and End_Date)
 INSERT INTO SEMESTER (Semester_ID, Semester_Name, Semester_Year, Start_Date, End_Date) VALUES
 (202208, 'Fall',   2022, '2022-08-29', '2022-12-19'),
 (202301, 'Spring', 2023, '2023-01-23', '2023-05-18'),
@@ -11,7 +11,21 @@ INSERT INTO SEMESTER (Semester_ID, Semester_Name, Semester_Year, Start_Date, End
 (202608, 'Fall',   2026, '2026-08-31', '2026-12-21'),
 (202701, 'Spring', 2027, '2027-01-25', '2027-05-20');
 
--- 2. INSERT INFORMATION_RELATIONS FOR SEMESTERS
-INSERT INTO INFORMATION_RELATION (Semester_ID, Last_Day_Of_Registration, Last_Day_Of_Dropping_Course, Date_Of_Midterm_Grade_Recording, Date_Of_Final_Grades_Recording) VALUES 
-(202608, '2026-09-01', '2026-09-15', '2026-10-15', '2026-12-22'),
-(202701, '2027-01-25', '2027-02-08', '2027-03-15', '2027-05-27');
+-- 2. Populate INFORMATION_RELATION (Registration, Drop, and Grade Recording Deadlines)
+INSERT INTO INFORMATION_RELATION (
+    Semester_ID,
+    Last_Day_Of_Registration,
+    Last_Day_Of_Dropping_Course,
+    Date_Of_Midterm_Grade_Recording,
+    Date_Of_Final_Grades_Recording
+) VALUES 
+(202208, '2022-09-05', '2022-09-19', '2022-10-17', '2022-12-22'),
+(202301, '2023-01-30', '2023-02-13', '2023-03-15', '2023-05-21'),
+(202308, '2023-09-04', '2023-09-18', '2023-10-16', '2023-12-21'),
+(202401, '2024-01-29', '2024-02-12', '2024-03-14', '2024-05-19'),
+(202408, '2024-09-02', '2024-09-16', '2024-10-14', '2024-12-19'),
+(202501, '2025-01-28', '2025-02-11', '2025-03-13', '2025-05-18'),
+(202508, '2025-09-01', '2025-09-15', '2025-10-13', '2025-12-18'),
+(202601, '2026-01-27', '2026-02-10', '2026-03-12', '2026-05-17'),
+(202608, '2026-09-07', '2026-09-21', '2026-10-15', '2026-12-22'),
+(202701, '2027-02-01', '2027-02-15', '2027-03-15', '2027-05-23');

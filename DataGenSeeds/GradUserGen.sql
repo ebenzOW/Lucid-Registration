@@ -66,7 +66,7 @@ BEGIN
         -- 3. Unique User_ID
         REPEAT
             SET v_user_id = FLOOR(100000 + (RAND() * 9899999));
-        UNTIL NOT EXISTS (SELECT 1 FROM USER WHERE User_ID = v_user_id)
+        UNTIL NOT EXISTS (SELECT 1 FROM `USER` WHERE User_ID = v_user_id)
         END REPEAT;
 
         -- 4. Demographics
@@ -240,7 +240,7 @@ BEGIN
         -- ================================================================
         -- INSERT CHAIN
         -- ================================================================
-        INSERT INTO USER (User_ID, User_Type, User_FName, User_LName, User_MName, User_Gender, User_DOB, User_PhoneNo, Street_No, Street_Name, City, State, Country, Zip_Code)
+        INSERT INTO `USER` (User_ID, User_Type, User_FName, User_LName, User_MName, User_Gender, User_DOB, User_PhoneNo, Street_No, Street_Name, City, State, Country, Zip_Code)
         VALUES (v_user_id, 'Student', v_fname, v_lname, v_mname, v_gender, v_dob, v_phone, v_street_no, v_street_name, v_city, v_state, 'USA', v_zip);
 
         INSERT INTO LOGIN (User_ID, User_Email, User_Password, No_Login_Attempts, IsLock)

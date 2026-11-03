@@ -1,5 +1,5 @@
 
-DELETE FROM USER WHERE User_Type = 'Student';
+DELETE FROM `USER` WHERE User_Type = 'Student';
 
 DELIMITER $$
 
@@ -48,7 +48,7 @@ BEGIN
             -- 1. Generate a unique random 6-to-7 digit User_ID (100000 - 9999999)
             REPEAT
                 SET v_user_id = FLOOR(100000 + (RAND() * 9899999));
-            UNTIL NOT EXISTS (SELECT 1 FROM USER WHERE User_ID = v_user_id)
+            UNTIL NOT EXISTS (SELECT 1 FROM `USER` WHERE User_ID = v_user_id)
               AND v_user_id NOT IN (987221, 973244, 928991, 753298, 513849, 948579, 957236, 467291, 987190, 992819, 299182, 178221)
             END REPEAT;
 
@@ -195,7 +195,7 @@ BEGIN
             -- ================================================================
             -- INSERT CHAIN (1 -> 5)
             -- ================================================================
-            INSERT INTO USER (
+            INSERT INTO `USER` (
                 User_ID, User_Type, User_FName, User_LName, User_MName,
                 User_Gender, User_DOB, User_PhoneNo, Street_No, Street_Name,
                 City, State, Country, Zip_Code

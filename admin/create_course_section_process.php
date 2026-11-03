@@ -115,17 +115,18 @@ try {
 
     // 5. Constraint 5: Faculty Time-Slot Conflict Check
     // Verify faculty is not already assigned to another section in the same semester and time slot
-    // Why: Row-lock existing faculty schedule rows to prevent race-condition schedule overlaps.
+    // Why: Check overlap via TIME_SLOT_DAY so single-day and multi-day slots sharing a weekday and period are caught, row-locking existing rows.
     $facConflictStmt = $conn->prepare("
         SELECT cs.CRN, cs.Course_ID
         FROM COURSE_SECTIONS cs
         JOIN TIME_SLOT ts_exist ON cs.Time_Slot_ID = ts_exist.Time_Slot_ID
+        JOIN TIME_SLOT_DAY tsd_exist ON ts_exist.Time_Slot_ID = tsd_exist.Time_Slot_ID
         JOIN TIME_SLOT ts_new ON ts_new.Time_Slot_ID = ?
-        WHERE cs.Semester_ID = ? AND cs.Faculty_ID = ?
-          AND (
-              cs.Time_Slot_ID = ts_new.Time_Slot_ID
-              OR (ts_exist.Time_Slot_Day = ts_new.Time_Slot_Day AND ts_exist.Period_ID = ts_new.Period_ID)
-          )
+        JOIN TIME_SLOT_DAY tsd_new ON ts_new.Time_Slot_ID = tsd_new.Time_Slot_ID
+        WHERE cs.Semester_ID = ?
+          AND cs.Faculty_ID = ?
+          AND ts_exist.Period_ID = ts_new.Period_ID
+          AND tsd_exist.Day_ID = tsd_new.Day_ID
         LIMIT 1
         FOR UPDATE
     ");
@@ -138,19 +139,41 @@ try {
         throw new Exception("Time conflict: Faculty member is already teaching another section in this time slot.");
     }
 
-    // 6. Constraint 6: Room Time-Slot Conflict Check
+    // 6. Constraint 6: Validate Room Existence, Type, Physical Capacity & Room Time-Slot Conflict
+    // Verify room exists in ROOM with Room_Type IN ('Lecture', 'Lab') and capacity >= available_seats
+    $roomStmt = $conn->prepare("
+        SELECT r.Room_ID, r.Room_Type, COALESCE(l.Lecture_Seats, lab.Lab_Stations, 10) AS Physical_Capacity
+        FROM ROOM r
+        LEFT JOIN LECTURE l ON r.Room_ID = l.Lecture_ID
+        LEFT JOIN LAB lab ON r.Room_ID = lab.Lab_ID
+        WHERE r.Room_ID = ? AND r.Room_Type IN ('Lecture', 'Lab')
+    ");
+    $roomStmt->bind_param("s", $room_id);
+    $roomStmt->execute();
+    $roomData = $roomStmt->get_result()->fetch_assoc();
+    $roomStmt->close();
+
+    if (!$roomData) {
+        throw new Exception("Invalid classroom selected. Courses can only be scheduled in Lecture or Lab rooms.");
+    }
+
+    if ($available_seats > (int)$roomData['Physical_Capacity']) {
+        throw new Exception("Available seats cannot exceed the room's physical capacity.");
+    }
+
     // Verify room is not already booked during the same semester and time slot
     // Why: Row-lock room bookings to prevent double-booking the same room during concurrent requests.
     $roomConflictStmt = $conn->prepare("
         SELECT cs.CRN, cs.Course_ID
         FROM COURSE_SECTIONS cs
         JOIN TIME_SLOT ts_exist ON cs.Time_Slot_ID = ts_exist.Time_Slot_ID
+        JOIN TIME_SLOT_DAY tsd_exist ON ts_exist.Time_Slot_ID = tsd_exist.Time_Slot_ID
         JOIN TIME_SLOT ts_new ON ts_new.Time_Slot_ID = ?
-        WHERE cs.Semester_ID = ? AND cs.Room_ID = ?
-          AND (
-              cs.Time_Slot_ID = ts_new.Time_Slot_ID
-              OR (ts_exist.Time_Slot_Day = ts_new.Time_Slot_Day AND ts_exist.Period_ID = ts_new.Period_ID)
-          )
+        JOIN TIME_SLOT_DAY tsd_new ON ts_new.Time_Slot_ID = tsd_new.Time_Slot_ID
+        WHERE cs.Semester_ID = ?
+          AND cs.Room_ID = ?
+          AND ts_exist.Period_ID = ts_new.Period_ID
+          AND tsd_exist.Day_ID = tsd_new.Day_ID
         LIMIT 1
         FOR UPDATE
     ");
@@ -233,7 +256,7 @@ try {
 
     $conn->commit();
 
-    // Fetch human-friendly summary data for session display
+    // Fetch summary data for session display
     $tsDetailStmt = $conn->prepare("
         SELECT ts.Time_Slot_Day, p.Start_Time, p.End_Time
         FROM TIME_SLOT ts

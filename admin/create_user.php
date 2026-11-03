@@ -26,6 +26,36 @@ $deptStmt = $conn->prepare("SELECT Department_ID, Department_Name FROM DEPARTMEN
 $deptStmt->execute();
 $departments = $deptStmt->get_result()->fetch_all(MYSQLI_ASSOC);
 $deptStmt->close();
+
+// Fetch available faculty offices that still have free desk capacity
+$officeStmt = $conn->prepare("
+    SELECT o.Office_ID, b.Building_Name, r.Room_NO, o.Office_Desks,
+           (SELECT COUNT(*) FROM FACULTY f WHERE f.Office_ID = o.Office_ID) AS Occupied_Desks
+    FROM OFFICE o
+    JOIN ROOM r ON o.Office_ID = r.Room_ID
+    JOIN BUILDING b ON r.Building_ID = b.Building_ID
+    WHERE (SELECT COUNT(*) FROM FACULTY f WHERE f.Office_ID = o.Office_ID) < o.Office_Desks
+    ORDER BY o.Office_ID ASC
+");
+$officeStmt->execute();
+$availableOffices = $officeStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$officeStmt->close();
+
+// Fetch eligible Full-Time faculty advisors who currently have < 15 advisees
+$advStmt = $conn->prepare("
+    SELECT f.Faculty_ID, u.User_FName, u.User_LName, dr.Department_ID, d.Department_Name,
+           (SELECT COUNT(*) FROM ADVISOR_STUDENT a WHERE a.Faculty_ID = f.Faculty_ID) AS Advisee_Count
+    FROM FACULTY f
+    JOIN `USER` u ON f.Faculty_ID = u.User_ID
+    JOIN FULL_TIME_FACULTY ftf ON f.Faculty_ID = ftf.Faculty_ID
+    JOIN DEPARTMENT_ROSTER dr ON f.Faculty_ID = dr.Faculty_ID
+    JOIN DEPARTMENT d ON dr.Department_ID = d.Department_ID
+    WHERE (SELECT COUNT(*) FROM ADVISOR_STUDENT a WHERE a.Faculty_ID = f.Faculty_ID) < 15
+    ORDER BY d.Department_Name ASC, u.User_LName ASC, u.User_FName ASC
+");
+$advStmt->execute();
+$eligibleAdvisors = $advStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$advStmt->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -224,9 +254,9 @@ $deptStmt->close();
                                 <input type="number" name="student_year" id="student_year" class="form-control" min="1" max="5" placeholder="1=Freshman, 4=Senior, 5=Grad">
                             </div>
                             <div class="col-md-4">
-                                <label for="department_id" class="form-label small fw-bold">Department</label>
-                                <select name="department_id" id="department_id" class="form-select">
-                                    <option value="">Select Department (Optional)</option>
+                                <label for="department_id" class="form-label small fw-bold">Department <span class="text-danger">*</span></label>
+                                <select name="department_id" id="department_id" class="form-select" onchange="filterAdvisorsByDepartment()">
+                                    <option value="">Select Department</option>
                                     <?php foreach ($departments as $dept): ?>
                                         <option value="<?= (int)$dept['Department_ID'] ?>"><?= htmlspecialchars($dept['Department_Name']) ?></option>
                                     <?php endforeach; ?>
@@ -239,6 +269,18 @@ $deptStmt->close();
                                     <option value="Undergraduate">Undergraduate</option>
                                     <option value="Graduate">Graduate</option>
                                 </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="advisor_id" class="form-label small fw-bold">Faculty Advisor (Optional)</label>
+                                <select name="advisor_id" id="advisor_id" class="form-select">
+                                    <option value="">Select Eligible Faculty Advisor (Optional)</option>
+                                    <?php foreach ($eligibleAdvisors as $adv): ?>
+                                        <option value="<?= (int)$adv['Faculty_ID'] ?>" data-dept="<?= (int)$adv['Department_ID'] ?>">
+                                            <?= htmlspecialchars($adv['User_FName'] . ' ' . $adv['User_LName'] . ' (' . $adv['Department_Name'] . ' - ' . $adv['Advisee_Count'] . '/15 advisees)') ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div class="form-text text-muted">Eligible Full-Time faculty in the student's department with &lt; 15 advisees.</div>
                             </div>
 
                             <!-- Undergrad Subfields -->
@@ -268,7 +310,11 @@ $deptStmt->close();
                                     </div>
                                     <div class="col-md-4">
                                         <label for="grad_program" class="form-label small fw-bold">Graduate Program <span class="text-danger">*</span></label>
-                                        <input type="text" name="grad_program" id="grad_program" class="form-control" placeholder="e.g. M.S. Computer Science">
+                                        <select name="grad_program" id="grad_program" class="form-select">
+                                            <option value="">Select Program</option>
+                                            <option value="MS">M.S. (Master of Science / Arts)</option>
+                                            <option value="PHD">Ph.D. (Doctor of Philosophy)</option>
+                                        </select>
                                     </div>
                                     <div class="col-md-4">
                                         <label for="thesis" class="form-label small fw-bold">Thesis Title / Topic</label>
@@ -291,8 +337,15 @@ $deptStmt->close();
                                 <input type="text" name="rank" id="rank" class="form-control" placeholder="e.g. Full Professor, Associate">
                             </div>
                             <div class="col-md-4">
-                                <label for="office_id" class="form-label small fw-bold">Office Room ID</label>
-                                <input type="text" name="office_id" id="office_id" class="form-control" placeholder="e.g. ACAD-201">
+                                <label for="office_id" class="form-label small fw-bold">Faculty Office</label>
+                                <select name="office_id" id="office_id" class="form-select">
+                                    <option value="">Select Available Office (Optional)</option>
+                                    <?php foreach ($availableOffices as $off): ?>
+                                        <option value="<?= htmlspecialchars($off['Office_ID'], ENT_QUOTES, 'UTF-8') ?>">
+                                            <?= htmlspecialchars($off['Office_ID'] . ' - ' . $off['Building_Name'] . ' ' . $off['Room_NO'] . ' (' . $off['Occupied_Desks'] . '/' . $off['Office_Desks'] . ' desks)', ENT_QUOTES, 'UTF-8') ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
                             </div>
                             <div class="col-md-4">
                                 <label for="faculty_department_id" class="form-label small fw-bold">Department <span class="text-danger">*</span></label>
@@ -310,10 +363,6 @@ $deptStmt->close();
                                     <option value="Full-Time">Full-Time</option>
                                     <option value="Part-Time">Part-Time</option>
                                 </select>
-                            </div>
-                            <div class="col-md-4">
-                                <label for="no_classes" class="form-label small fw-bold">Number of Classes</label>
-                                <input type="number" name="no_classes" id="no_classes" class="form-control" min="0" value="0">
                             </div>
                         </div>
                     </div>

@@ -30,24 +30,8 @@ if ($crn === false || $crn <= 0) {
     exit;
 }
 
-// Relative Path Database Connection Handling
-if (file_exists(__DIR__ . '/../dblogin.php')) {
-    require_once __DIR__ . '/../dblogin.php';
-}
-
-if (!isset($conn) || !($conn instanceof mysqli)) {
-    if (isset($hostname) && isset($username) && isset($db)) {
-        $conn = new mysqli($hostname, $username, $password ?? '', $db);
-    } elseif (file_exists(__DIR__ . '/../db_connect.php')) {
-        require_once __DIR__ . '/../db_connect.php';
-    }
-}
-
-if (!isset($conn) || $conn->connect_error) {
-    $_SESSION['flash_error'] = "Database connection error. Please try again later.";
-    header("Location: register.php");
-    exit;
-}
+// Database Connection
+require_once '../db_connect.php';
 
 // -----------------------------------------------------------------------------
 // Step 1: Target Course & Section Retrieval
@@ -270,13 +254,13 @@ if (!empty($prerequisites)) {
         }
         $hCheckStmt->close();
 
-        // b) If not satisfied in history, check conditionally in-progress in ENROLLMENT for Fall 2026 (Semester_ID = 202608)
+        // b) If not satisfied in history, check conditionally in-progress in ENROLLMENT across any active/ungraded enrollment
         if (!$satisfied) {
             $ipCheckStmt = $conn->prepare("
                 SELECT 1
                 FROM ENROLLMENT e
                 JOIN COURSE_SECTIONS cs ON e.CRN = cs.CRN
-                WHERE e.Student_ID = ? AND cs.Course_ID = ? AND cs.Semester_ID = 202608
+                WHERE e.Student_ID = ? AND cs.Course_ID = ? AND e.Grade IS NULL
                 LIMIT 1
             ");
             $ipCheckStmt->bind_param("is", $student_id, $prereqId);
@@ -386,8 +370,8 @@ try {
     }
 
 
-    //MAKING SURE COURSE IS ONE OF STUDENTS MAJORS OR MINORS
-    // Check that the course belongs to the student's declared major(s) or minor
+    // Cross-Department Major Requirements: Verify that the course belongs to the student's major/minor department
+    // OR is explicitly listed in MAJOR_REQUIREMENTS / MINOR_REQUIREMENTS for their declared major(s)/minor.
     $allowed_query = "
         SELECT 1 
         FROM COURSES c
@@ -405,18 +389,31 @@ try {
                 JOIN MINORS mn ON smn.Minor_ID = mn.Minor_ID 
                 WHERE smn.Student_ID = ?
             )
+            OR c.Course_ID IN (
+                SELECT mr.Course_ID
+                FROM STUDENT_MAJORS sm
+                JOIN MAJOR_REQUIREMENTS mr ON sm.Major_ID = mr.Major_ID
+                WHERE sm.Student_ID = ?
+            )
+            OR c.Course_ID IN (
+                SELECT mnr.Course_ID
+                FROM STUDENT_MINORS smn
+                JOIN MINOR_REQUIREMENTS mnr ON smn.Minor_ID = mnr.Minor_ID
+                WHERE smn.Student_ID = ?
+            )
         )
         LIMIT 1
     ";
 
     $stmt = $conn->prepare($allowed_query);
-    $stmt->bind_param("sii", $course_id, $student_id, $student_id);
+    $stmt->bind_param("siiii", $course_id, $student_id, $student_id, $student_id, $student_id);
     $stmt->execute();
     $is_allowed = $stmt->get_result()->fetch_row();
     $stmt->close();
 
     if (!$is_allowed) {
-        $_SESSION['flash_error'] = "Registration blocked: You may only register for courses within your declared major(s) or minor.";
+        $conn->rollback();
+        $_SESSION['flash_error'] = "Registration blocked: You may only register for courses within your declared major(s) or minor, or required for your curriculum.";
         header("Location: register.php");
         exit;
     }

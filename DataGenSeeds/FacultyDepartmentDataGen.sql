@@ -17,7 +17,7 @@ VALUES
 (11, 'Art', 'ArtDept@Lucid.edu', '6789047659', 'LIBN-311'),
 (12, 'Astronomy', 'AstronomyDept@Lucid.edu', '4694102072', 'LIBN-312');
 
-DELETE FROM USER WHERE User_Type = 'Faculty';
+DELETE FROM `USER` WHERE User_Type = 'Faculty';
 
 DELIMITER $$
 
@@ -77,7 +77,7 @@ BEGIN
             -- Generate unique random 6-to-7 digit User_ID not colliding with existing users or Chair_IDs
             REPEAT
                 SET v_user_id = FLOOR(100000 + (RAND() * 9899999));
-            UNTIL NOT EXISTS (SELECT 1 FROM USER WHERE User_ID = v_user_id)
+            UNTIL NOT EXISTS (SELECT 1 FROM `USER` WHERE User_ID = v_user_id)
               AND v_user_id NOT IN (987221, 973244, 928991, 753298, 513849, 948579, 957236, 467291, 987190, 992819, 299182, 178221)
             END REPEAT;
 
@@ -232,7 +232,7 @@ BEGIN
         -- INSERT CHAIN (1 -> 6)
         -- ================================================================
         -- 1. USER
-        INSERT INTO USER (
+        INSERT INTO `USER` (
             User_ID, User_Type, User_FName, User_LName, User_MName,
             User_Gender, User_DOB, User_PhoneNo, Street_No, Street_Name,
             City, State, Country, Zip_Code

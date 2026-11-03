@@ -21,6 +21,8 @@ function toggleFormSections() {
             } else if (selectedType === 'Student') {
                 document.getElementById('student_year').setAttribute('required', 'required');
                 document.getElementById('student_level').setAttribute('required', 'required');
+                document.getElementById('department_id').setAttribute('required', 'required');
+                filterAdvisorsByDepartment();
             } else if (selectedType === 'Faculty') {
                 const facDept = document.getElementById('faculty_department_id');
                 if (facDept) facDept.setAttribute('required', 'required');
@@ -29,6 +31,28 @@ function toggleFormSections() {
         }
     }
     toggleStudentSublevels();
+}
+
+function filterAdvisorsByDepartment() {
+    const deptSelect = document.getElementById('department_id');
+    const advisorSelect = document.getElementById('advisor_id');
+    if (!deptSelect || !advisorSelect) return;
+    const selectedDept = deptSelect.value;
+    const options = advisorSelect.querySelectorAll('option');
+    options.forEach((opt, idx) => {
+        if (idx === 0) return; // Keep placeholder
+        const optDept = opt.getAttribute('data-dept');
+        if (!selectedDept || optDept === selectedDept) {
+            opt.style.display = '';
+            opt.disabled = false;
+        } else {
+            opt.style.display = 'none';
+            opt.disabled = true;
+            if (opt.selected) {
+                advisorSelect.value = '';
+            }
+        }
+    });
 }
 
 function toggleStudentSublevels() {
@@ -51,7 +75,7 @@ function toggleStudentSublevels() {
     gradType.removeAttribute("required");
     gradProgram.removeAttribute("required");
 
-    //Removes old values from the inputs incase you back track
+    // Removes old values from the inputs incase you back track
     if (level !== "Undergraduate") {
         undergradType.value = "";
     }
@@ -70,13 +94,18 @@ function toggleStudentSublevels() {
     if (level === "Undergraduate") {
         undergradFields.style.display = "block";
         undergradType.setAttribute("required", "required");
-    }
-
-    else if (level === "Graduate") {
+    } else if (level === "Graduate") {
         gradFields.style.display = "block";
         gradType.setAttribute("required", "required");
         gradProgram.setAttribute("required", "required");
     }
 }
-// Ensure visibility checks run immediately when loading the environment
-document.addEventListener("DOMContentLoaded", toggleFormSections);
+
+// Ensure visibility checks and event bindings run immediately when loading the DOM
+document.addEventListener("DOMContentLoaded", () => {
+    toggleFormSections();
+    const deptSelect = document.getElementById('department_id');
+    if (deptSelect) {
+        deptSelect.addEventListener('change', filterAdvisorsByDepartment);
+    }
+});

@@ -7,28 +7,29 @@ $admin_id = (int)$userID;
 
 $sql = "
     SELECT
-        User_ID,
-        User_Type,
-        User_FName,
-        User_MName,
-        User_LName,
-        User_Gender,
-        User_DOB,
-        User_PhoneNo,
-        Street_No,
-        Street_Name,
-        City,
-        State,
-        Country,
-        Zip_Code
-    FROM `USER`
-    ORDER BY User_ID ASC
+        u.User_ID,
+        u.User_Type,
+        u.User_FName,
+        u.User_MName,
+        u.User_LName,
+        u.User_Gender,
+        u.User_DOB,
+        u.User_PhoneNo,
+        u.Street_No,
+        u.Street_Name,
+        u.City,
+        u.State,
+        u.Country,
+        u.Zip_Code,
+        l.User_Email
+    FROM `USER` u
+    LEFT JOIN LOGIN l ON u.User_ID = l.User_ID
+    ORDER BY u.User_ID ASC
 ";
 
-$result = $conn->query($sql);
-if (!$result) {
-    die("Failed to retrieve users.");
-}
+$stmt = $conn->prepare($sql);
+$stmt->execute();
+$result = $stmt->get_result();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -106,6 +107,7 @@ if (!$result) {
                                 <th>User ID</th>
                                 <th>Role</th>
                                 <th>Full Name</th>
+                                <th>Email</th>
                                 <th>Gender</th>
                                 <th>Date of Birth</th>
                                 <th>Phone</th>
@@ -132,6 +134,7 @@ if (!$result) {
                                     <td class="fw-semibold">
                                         <?= htmlspecialchars(trim($user["User_FName"] . ' ' . ($user["User_MName"] ? $user["User_MName"] . ' ' : '') . $user["User_LName"]), ENT_QUOTES, 'UTF-8') ?>
                                     </td>
+                                    <td><?= htmlspecialchars($user["User_Email"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><?= htmlspecialchars($user["User_Gender"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><?= htmlspecialchars($user["User_DOB"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><?= htmlspecialchars($user["User_PhoneNo"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>

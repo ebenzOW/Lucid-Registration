@@ -69,7 +69,7 @@ $fullName = strip_tags($fullName);
                     <div>
                         <h2 class="fw-bold mb-1">Administrator Dashboard</h2>
                         <div class="text-secondary">
-                            Welcome back, <?= getUserNavbarProfileHtml($conn, $admin_id, 'Admin') ?>
+                            Hello, <?= getUserNavbarProfileHtml($conn, $admin_id, 'Admin', 'text-dark') ?>
                         </div>
                     </div>
                     <div>
