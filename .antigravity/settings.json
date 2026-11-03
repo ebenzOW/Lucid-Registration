@@ -1,0 +1,17 @@
+{
+  "agent.terminal.allowedCommands": [
+    "php -l",
+    "php.exe -l",
+    "q:\\XAMPP\\php\\php.exe -l",
+    "Q:\\XAMPP\\php\\php.exe -l",
+    "php -v",
+    "php.exe -v",
+    "git status",
+    "git diff",
+    "git log",
+    "git branch",
+    "git ls-files",
+    "dir",
+    "Get-ChildItem"
+  ]
+}

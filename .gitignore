@@ -1,7 +1,6 @@
 # =========================
 # Security & Credentials
 # =========================
-
 db_login.php
 dblogin.php
 db_login_template.php
@@ -9,6 +8,9 @@ db_login_template.php
 .env
 email_config.php
 notes.txt
+TODO.txt    
+*.ps1
+*.md
 # =========================
 # Dependencies & Libraries
 # =========================

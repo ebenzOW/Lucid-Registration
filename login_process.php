@@ -37,7 +37,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if ($result->num_rows === 1) {
         $user = $result->fetch_assoc();
 
-        if ($user["is_Locked"]) {
+        if ($user["isLock"]) {
             $conn->close();
             header("Location: login.php?error=locked");
             exit;
@@ -67,13 +67,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                 //temporary next location, will replace with different user dashboards
                 if ($_SESSION["User_Type"] === "Student") {
-                    header("Location: student_dashboard.php");
+                    header("Location: student/dashboard.php");
                     exit;
                 } else if ($_SESSION["User_Type"] === "Faculty") {
-                    header("Location: faculty_dashboard.php");
+                    header("Location: faculty/dashboard.php");
                     exit;
                 } else if ($_SESSION["User_Type"] === "Admin") {
-                    header("Location: admin_dashboard.php");
+                    header("Location: admin/dashboard.php");
                     exit;
                 } else if ($_SESSION["User_Type"] === "Stat-Dept") {
                     header("Location: stat_dashboard.php");
@@ -86,7 +86,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
                 if ($attempts >= 3) {
                     $lockStmt = $conn->prepare("UPDATE LOGIN
-                                                SET No_Login_Attempts = ?, is_Locked = 1
+                                                SET No_Login_Attempts = ?, isLock = 1
                                                 WHERE User_ID = ?");
                     $lockStmt->bind_param("ii", $attempts, $user["User_ID"]);
                     $lockStmt->execute();
