@@ -14,15 +14,6 @@ require_once '../profile_hover_card.php';
 
 $admin_id = (int)$userID;
 
-$fullName = $_SESSION["User"]["User_FName"] ?? "Administrator";
-if (!empty($_SESSION["User"]["User_MName"])) {
-    $fullName .= " " . $_SESSION["User"]["User_MName"];
-}
-if (!empty($_SESSION["User"]["User_LName"])) {
-    $fullName .= " " . $_SESSION["User"]["User_LName"];
-}
-$fullName = strip_tags($fullName);
-
 $successMessage = $_SESSION["success_message"] ?? "";
 $errorMessage   = $_SESSION["error_message"] ?? "";
 $newSectionData = $_SESSION["new_section_data"] ?? null;
@@ -54,11 +45,12 @@ $courseStmt->close();
 // 3. Fetch Faculty Members with Department and Type
 $facultyStmt = $conn->prepare("
     SELECT f.Faculty_ID, f.Faculty_Type, u.User_FName, u.User_MName, u.User_LName,
-           d.Department_ID, d.Department_Name
+           GROUP_CONCAT(DISTINCT d.Department_Name ORDER BY d.Department_Name SEPARATOR ', ') AS Department_Name
     FROM FACULTY f
     JOIN `USER` u ON f.Faculty_ID = u.User_ID
     LEFT JOIN DEPARTMENT_ROSTER dr ON f.Faculty_ID = dr.Faculty_ID
     LEFT JOIN DEPARTMENT d ON dr.Department_ID = d.Department_ID
+    GROUP BY f.Faculty_ID, f.Faculty_Type, u.User_FName, u.User_MName, u.User_LName
     ORDER BY u.User_LName ASC, u.User_FName ASC
 ");
 $facultyStmt->execute();

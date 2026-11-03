@@ -142,7 +142,7 @@ try {
     // 6. Constraint 6: Validate Room Existence, Type, Physical Capacity & Room Time-Slot Conflict
     // Verify room exists in ROOM with Room_Type IN ('Lecture', 'Lab') and capacity >= available_seats
     $roomStmt = $conn->prepare("
-        SELECT r.Room_ID, r.Room_Type, COALESCE(l.Lecture_Seats, lab.Lab_Stations, 10) AS Physical_Capacity
+        SELECT r.Room_ID, r.Room_Type, COALESCE(l.Lecture_Seats, lab.Lab_Stations, 0) AS Physical_Capacity
         FROM ROOM r
         LEFT JOIN LECTURE l ON r.Room_ID = l.Lecture_ID
         LEFT JOIN LAB lab ON r.Room_ID = lab.Lab_ID

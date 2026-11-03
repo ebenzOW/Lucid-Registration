@@ -32,6 +32,7 @@ if ($crn === false || $crn <= 0) {
 
 // Database Connection
 require_once '../db_connect.php';
+require_once __DIR__ . '/../includes/academic_helpers.php';
 
 // -----------------------------------------------------------------------------
 // Step 1: Target Course & Section Retrieval

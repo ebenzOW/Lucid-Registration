@@ -11,7 +11,7 @@ require_once 'faculty_guard.php';
 $faculty_id = (int)$userID;
 
 require_once '../db_connect.php';
-require_once '../student/academic_helpers.php';
+require_once __DIR__ . '/../includes/academic_helpers.php';
 require_once '../profile_hover_card.php';
 
 // 1. Fetch Faculty Profile and Department Details

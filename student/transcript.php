@@ -3,7 +3,7 @@ require_once 'student_guard.php';
 $student_id = (int)$userID;
 
 require_once '../db_connect.php';
-require_once 'academic_helpers.php';
+require_once __DIR__ . '/../includes/academic_helpers.php';
 require_once '../profile_hover_card.php';
 
 // Fetch profile and transcript data

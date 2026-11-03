@@ -4,15 +4,7 @@ require_once '../db_connect.php';
 require_once '../profile_hover_card.php';
 
 $admin_id = (int)$userID;
-
-$fullName = $_SESSION["User"]["User_FName"] ?? "Administrator";
-if (!empty($_SESSION["User"]["User_MName"])) {
-    $fullName .= " " . $_SESSION["User"]["User_MName"];
-}
-if (!empty($_SESSION["User"]["User_LName"])) {
-    $fullName .= " " . $_SESSION["User"]["User_LName"];
-}
-$fullName = strip_tags($fullName);
+$adminNavHtml = getUserNavbarProfileHtml($conn, $admin_id, 'Admin');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -51,7 +43,7 @@ $fullName = strip_tags($fullName);
                     </li>
                 </ul>
                 <div class="d-flex align-items-center gap-3">
-                    <?= getUserNavbarProfileHtml($conn, $admin_id, 'Admin') ?>
+                    <?= $adminNavHtml ?>
                     <form action="../logout.php" method="POST" class="m-0">
                         <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
                     </form>
@@ -69,7 +61,7 @@ $fullName = strip_tags($fullName);
                     <div>
                         <h2 class="fw-bold mb-1">Administrator Dashboard</h2>
                         <div class="text-secondary">
-                            Hello, <?= getUserNavbarProfileHtml($conn, $admin_id, 'Admin', 'text-dark') ?>
+                            Hello, <?= htmlspecialchars(trim(($_SESSION["User"]["User_FName"] ?? 'Administrator') . ' ' . ($_SESSION["User"]["User_LName"] ?? '')), ENT_QUOTES, 'UTF-8') ?>
                         </div>
                     </div>
                     <div>

@@ -18,7 +18,7 @@ $viewer_id   = (int)$_SESSION["User_ID"];
 $viewer_type = $_SESSION["User_Type"] ?? '';
 
 require_once 'db_connect.php';
-require_once 'student/academic_helpers.php';
+require_once __DIR__ . '/includes/academic_helpers.php';
 
 $target_id = isset($_GET['user_id']) ? (int)$_GET['user_id'] : $viewer_id;
 

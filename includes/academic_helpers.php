@@ -684,32 +684,7 @@ function searchMasterSchedule($conn, $filters = []) {
 
     // Attach course prerequisites only for unique courses present in the search results
     $uniqueCourseIds = array_values(array_unique(array_column($results, 'Course_ID')));
-    $prereqMap = [];
-    if (!empty($uniqueCourseIds)) {
-        $placeholders = implode(',', array_fill(0, count($uniqueCourseIds), '?'));
-        $prereqTypes = str_repeat('s', count($uniqueCourseIds));
-        $pStmt = $conn->prepare("
-            SELECT cp.Course_ID, cp.Prerequisite_Course_ID, c.Course_Name AS Prerequisite_Course_Name
-            FROM COURSE_PREREQUISITE cp
-            JOIN COURSES c ON cp.Prerequisite_Course_ID = c.Course_ID
-            WHERE cp.Course_ID IN ($placeholders)
-            ORDER BY cp.Course_ID ASC, cp.Prerequisite_Course_ID ASC
-        ");
-        $pStmt->bind_param($prereqTypes, ...$uniqueCourseIds);
-        $pStmt->execute();
-        $pRes = $pStmt->get_result();
-        while ($row = $pRes->fetch_assoc()) {
-            $cid = $row['Course_ID'];
-            if (!isset($prereqMap[$cid])) {
-                $prereqMap[$cid] = [];
-            }
-            $prereqMap[$cid][] = [
-                'Course_ID'   => $row['Prerequisite_Course_ID'],
-                'Course_Name' => $row['Prerequisite_Course_Name']
-            ];
-        }
-        $pStmt->close();
-    }
+    $prereqMap = getPrerequisitesForCourses($conn, $uniqueCourseIds);
 
     foreach ($results as &$secRow) {
         $cid = $secRow['Course_ID'];
@@ -721,31 +696,44 @@ function searchMasterSchedule($conn, $filters = []) {
 }
 
 /**
- * Return an associative array of all course prerequisites keyed by Course_ID.
+ * Return an associative array of course prerequisites keyed by Course_ID for the given list of course IDs.
+ *
+ * @param mysqli $conn
+ * @param array $courseIds
+ * @return array
  */
-function getAllCoursePrerequisitesMap($conn) {
-    $sql = "
+function getPrerequisitesForCourses($conn, array $courseIds) {
+    $uniqueCourseIds = array_values(array_unique(array_filter($courseIds)));
+    if (empty($uniqueCourseIds)) {
+        return [];
+    }
+
+    $placeholders = implode(',', array_fill(0, count($uniqueCourseIds), '?'));
+    $prereqTypes = str_repeat('s', count($uniqueCourseIds));
+    $pStmt = $conn->prepare("
         SELECT cp.Course_ID, cp.Prerequisite_Course_ID, c.Course_Name AS Prerequisite_Course_Name
         FROM COURSE_PREREQUISITE cp
         JOIN COURSES c ON cp.Prerequisite_Course_ID = c.Course_ID
+        WHERE cp.Course_ID IN ($placeholders)
         ORDER BY cp.Course_ID ASC, cp.Prerequisite_Course_ID ASC
-    ";
-    $stmt = $conn->prepare($sql);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    $map = [];
-    while ($row = $res->fetch_assoc()) {
+    ");
+    $pStmt->bind_param($prereqTypes, ...$uniqueCourseIds);
+    $pStmt->execute();
+    $pRes = $pStmt->get_result();
+    $prereqMap = [];
+    while ($row = $pRes->fetch_assoc()) {
         $cid = $row['Course_ID'];
-        if (!isset($map[$cid])) {
-            $map[$cid] = [];
+        if (!isset($prereqMap[$cid])) {
+            $prereqMap[$cid] = [];
         }
-        $map[$cid][] = [
+        $prereqMap[$cid][] = [
             'Course_ID'   => $row['Prerequisite_Course_ID'],
             'Course_Name' => $row['Prerequisite_Course_Name']
         ];
     }
-    $stmt->close();
-    return $map;
+    $pStmt->close();
+
+    return $prereqMap;
 }
 
 /**
@@ -1058,27 +1046,44 @@ function checkAndEnforceFailedPrerequisites($conn, $student_id) {
             $isInProgress = $ipStmt->get_result()->fetch_row();
             $ipStmt->close();
 
-            // If failed and not currently in progress or passed, drop dependent course
-            if ($hasFailed && !$hasPassed && !$isInProgress) {
-                $conn->begin_transaction();
-                $lock = $conn->prepare("SELECT Available_seats FROM COURSE_SECTIONS WHERE CRN = ? FOR UPDATE");
-                $lock->bind_param("i", $crn);
-                $lock->execute();
-                $lock->close();
+            // If neither passed nor currently in progress, drop dependent course
+            if (!$hasPassed && !$isInProgress) {
+                try {
+                    $conn->begin_transaction();
+                    $lock = $conn->prepare("SELECT Available_seats FROM COURSE_SECTIONS WHERE CRN = ? FOR UPDATE");
+                    $lock->bind_param("i", $crn);
+                    $lock->execute();
+                    $lock->close();
 
-                $del = $conn->prepare("DELETE FROM ENROLLMENT WHERE CRN = ? AND Student_ID = ?");
-                $del->bind_param("ii", $crn, $student_id);
-                $del->execute();
-                $del->close();
+                    $del = $conn->prepare("DELETE FROM ENROLLMENT WHERE CRN = ? AND Student_ID = ?");
+                    $del->bind_param("ii", $crn, $student_id);
+                    $del->execute();
+                    $affected = $del->affected_rows;
+                    $del->close();
 
-                $inc = $conn->prepare("UPDATE COURSE_SECTIONS SET Available_seats = Available_seats + 1 WHERE CRN = ?");
-                $inc->bind_param("i", $crn);
-                $inc->execute();
-                $inc->close();
+                    if ($affected === 1) {
+                        $inc = $conn->prepare("UPDATE COURSE_SECTIONS SET Available_seats = Available_seats + 1 WHERE CRN = ?");
+                        $inc->bind_param("i", $crn);
+                        $inc->execute();
+                        $inc->close();
 
-                $conn->commit();
+                        $conn->commit();
 
-                $notices[] = "You were automatically dropped from {$course_id} - {$sec['Course_Name']} (CRN: {$crn}) because prerequisite {$prereq_id} was not passed (Grade: {$lastFailedGrade}).";
+                        if ($hasFailed) {
+                            $notices[] = "You were automatically dropped from {$course_id} - {$sec['Course_Name']} (CRN: {$crn}) because prerequisite {$prereq_id} was not passed (Grade: {$lastFailedGrade}).";
+                        } else {
+                            $notices[] = "You were automatically dropped from {$course_id} - {$sec['Course_Name']} (CRN: {$crn}) because required prerequisite {$prereq_id} is no longer completed or in progress.";
+                        }
+                    } else {
+                        if ($conn->in_transaction) {
+                            $conn->rollback();
+                        }
+                    }
+                } catch (Exception $e) {
+                    if ($conn->in_transaction) {
+                        $conn->rollback();
+                    }
+                }
                 break;
             }
         }

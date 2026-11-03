@@ -1,4 +1,722 @@
 -- ============================================================================
+-- LUCID UNIVERSITY: 01_campus_and_catalog.sql
+-- Infrastructure, Calendar, Departments & Course Catalog
+-- Order:
+--   1. Time_Tables_Data.sql (PERIOD, DAY, TIME_SLOT, TIME_SLOT_DAY)
+--   2. Building_Room_Data.sql (BUILDING, ROOM, OFFICE, LAB, LECTURE)
+--   3. Holds_Data.sql (HOLDS)
+--   4. Sem_InfoRelation.sql (SEMESTER, INFORMATION_RELATION)
+--   5. DEPARTMENT (12 departments with Chair_ID omitted/NULL)
+--   6. CourseDataGen.sql (COURSES)
+--   7. MajorMinorDataGen.sql (MAJORS, MINORS, MAJOR_REQUIREMENTS, MINOR_REQUIREMENTS)
+--   8. Course_Prerequisites.sql (SeedPrerequisites procedure call and drop)
+-- ============================================================================
+
+
+-- 1. Populate PERIOD
+INSERT INTO PERIOD (Period_ID, Start_Time, End_Time) VALUES
+(1, '08:00:00', '09:40:00'),
+(2, '09:50:00', '11:30:00'),
+(3, '11:40:00', '13:20:00'),
+(4, '13:30:00', '15:10:00'),
+(5, '15:20:00', '17:00:00'),
+(6, '17:10:00', '18:50:00'),
+(7, '19:00:00', '20:40:00'),
+(8, '20:50:00', '22:30:00');
+
+-- 2. Populate DAY
+INSERT INTO DAY (Day_ID, Weekday) VALUES
+(1, 'Monday'),
+(2, 'Tuesday'),
+(3, 'Wednesday'),
+(4, 'Thursday'),
+(5, 'Friday'),
+(6, 'Saturday'),
+(7, 'Sunday');
+
+-- 3. Create individual weekday (Monday-Friday) time slots (IDs 1-40)
+INSERT INTO TIME_SLOT (Time_Slot_ID, Time_Slot_Day, Period_ID)
+SELECT
+    (p.Period_ID - 1) * 5 + d.Day_ID,
+    d.Weekday,
+    p.Period_ID
+FROM PERIOD p
+CROSS JOIN DAY d
+WHERE d.Day_ID <= 5
+ORDER BY p.Period_ID, d.Day_ID;
+
+-- 4. Link individual slots to their corresponding weekdays
+INSERT INTO TIME_SLOT_DAY (Time_Slot_ID, Day_ID)
+SELECT ts.Time_Slot_ID, d.Day_ID
+FROM TIME_SLOT ts
+JOIN DAY d ON ts.Time_Slot_Day = d.Weekday;
+
+-- 5. Create Monday/Wednesday slots (IDs 101-108)
+INSERT INTO TIME_SLOT (Time_Slot_ID, Time_Slot_Day, Period_ID)
+SELECT p.Period_ID + 100, 'M/W', p.Period_ID
+FROM PERIOD p;
+
+-- 6. Create Tuesday/Thursday slots (IDs 109-116)
+INSERT INTO TIME_SLOT (Time_Slot_ID, Time_Slot_Day, Period_ID)
+SELECT p.Period_ID + 108, 'Tues/Thurs', p.Period_ID
+FROM PERIOD p;
+
+-- 7. Link M/W and Tues/Thurs slots to their weekdays
+INSERT INTO TIME_SLOT_DAY (Time_Slot_ID, Day_ID)
+SELECT ts.Time_Slot_ID, d.Day_ID
+FROM TIME_SLOT ts
+CROSS JOIN DAY d
+WHERE ts.Time_Slot_ID BETWEEN 101 AND 116
+  AND (
+      (ts.Time_Slot_Day = 'M/W' AND d.Weekday IN ('Monday', 'Wednesday'))
+      OR
+      (ts.Time_Slot_Day = 'Tues/Thurs' AND d.Weekday IN ('Tuesday', 'Thursday'))
+  );
+
+
+-- ============================================================================
+-- BUILDINGS, ROOMS, AND ROOM SUBTYPES (LECTURE / LAB / OFFICE)
+-- Run AFTER schema.sql and BEFORE FacultyDepartmentDataGen.sql
+-- (DEPARTMENT.Office_ID and FACULTY.Office_ID are foreign keys to OFFICE).
+--
+-- Sizing (see notes): 400 faculty, 1,500 students, about 4,250 course enrollments
+-- per semester.  Every room has 16 usable time slots (M/W and Tues/Thurs x 8 periods).
+--   40 lecture rooms  = 640 section-slots
+--   12 labs/studios   = 192 section-slots
+--   Offices: 12 department offices + faculty offices with 439 desks for 400 faculty
+-- ============================================================================
+
+-- 1. Insert into BUILDING
+INSERT INTO BUILDING (Building_ID, Building_Name, Usage_Purpose)
+VALUES
+    ('ADMIN', 'Administration Building', 'Administrative offices'),
+    ('SCI', 'Science Building', 'Science classrooms and laboratories'),
+    ('ENG', 'Engineering Building', 'Engineering classrooms and laboratories'),
+    ('ACAD', 'Academic Building', 'Academic classrooms and faculty offices'),
+    ('LIBN', 'Library North', 'Library facilities, faculty offices, and department offices'),
+    ('LIBS', 'Library South', 'Library facilities and student study spaces'),
+    ('HUM', 'Humanities Hall', 'Humanities and social science classrooms'),
+    ('ARTS', 'Arts Center', 'Art studios and art classrooms'),
+    ('FAC', 'Faculty Office Building', 'Faculty offices');
+
+-- 2. Insert into ROOM
+INSERT INTO ROOM (Room_ID, Building_ID, Room_NO, Room_Type)
+VALUES
+
+    -- Administration Building
+    ('ADMIN-101', 'ADMIN', '101', 'Office'),
+    ('ADMIN-102', 'ADMIN', '102', 'Office'),
+    ('ADMIN-103', 'ADMIN', '103', 'Office'),
+
+    -- Science Building
+    ('SCI-103', 'SCI', '103', 'Lecture'),
+    ('SCI-104', 'SCI', '104', 'Lecture'),
+    ('SCI-105', 'SCI', '105', 'Lecture'),
+    ('SCI-106', 'SCI', '106', 'Lecture'),
+    ('SCI-107', 'SCI', '107', 'Lecture'),
+    ('SCI-101', 'SCI', '101', 'Lab'),
+    ('SCI-102', 'SCI', '102', 'Lab'),
+    ('SCI-201', 'SCI', '201', 'Lab'),
+    ('SCI-202', 'SCI', '202', 'Lab'),
+    ('SCI-203', 'SCI', '203', 'Lab'),
+
+    -- Engineering Building
+    ('ENG-103', 'ENG', '103', 'Lecture'),
+    ('ENG-104', 'ENG', '104', 'Lecture'),
+    ('ENG-105', 'ENG', '105', 'Lecture'),
+    ('ENG-106', 'ENG', '106', 'Lecture'),
+    ('ENG-101', 'ENG', '101', 'Lab'),
+    ('ENG-102', 'ENG', '102', 'Lab'),
+    ('ENG-201', 'ENG', '201', 'Lab'),
+    ('ENG-202', 'ENG', '202', 'Lab'),
+
+    -- Academic Building
+    ('ACAD-102', 'ACAD', '102', 'Lecture'),
+    ('ACAD-103', 'ACAD', '103', 'Lecture'),
+    ('ACAD-104', 'ACAD', '104', 'Lecture'),
+    ('ACAD-105', 'ACAD', '105', 'Lecture'),
+    ('ACAD-106', 'ACAD', '106', 'Lecture'),
+    ('ACAD-201', 'ACAD', '201', 'Lecture'),
+    ('ACAD-202', 'ACAD', '202', 'Lecture'),
+    ('ACAD-203', 'ACAD', '203', 'Lecture'),
+    ('ACAD-204', 'ACAD', '204', 'Lecture'),
+    ('ACAD-205', 'ACAD', '205', 'Lecture'),
+    ('ACAD-206', 'ACAD', '206', 'Lecture'),
+    ('ACAD-207', 'ACAD', '207', 'Lecture'),
+    ('ACAD-208', 'ACAD', '208', 'Lecture'),
+    ('ACAD-209', 'ACAD', '209', 'Lecture'),
+    ('ACAD-101', 'ACAD', '101', 'Office'),
+
+    -- Library North
+    ('LIBN-204', 'LIBN', '204', 'Lecture'),
+    ('LIBN-201', 'LIBN', '201', 'Office'),
+    ('LIBN-202', 'LIBN', '202', 'Office'),
+    ('LIBN-203', 'LIBN', '203', 'Office'),
+    ('LIBN-301', 'LIBN', '301', 'Office'),
+    ('LIBN-302', 'LIBN', '302', 'Office'),
+    ('LIBN-303', 'LIBN', '303', 'Office'),
+    ('LIBN-304', 'LIBN', '304', 'Office'),
+    ('LIBN-305', 'LIBN', '305', 'Office'),
+    ('LIBN-306', 'LIBN', '306', 'Office'),
+    ('LIBN-307', 'LIBN', '307', 'Office'),
+    ('LIBN-308', 'LIBN', '308', 'Office'),
+    ('LIBN-309', 'LIBN', '309', 'Office'),
+    ('LIBN-310', 'LIBN', '310', 'Office'),
+    ('LIBN-311', 'LIBN', '311', 'Office'),
+    ('LIBN-312', 'LIBN', '312', 'Office'),
+
+    -- Library South
+    ('LIBS-101', 'LIBS', '101', 'Lecture'),
+    ('LIBS-102', 'LIBS', '102', 'Lecture'),
+    ('LIBS-103', 'LIBS', '103', 'Lecture'),
+
+    -- Humanities Hall
+    ('HUM-101', 'HUM', '101', 'Lecture'),
+    ('HUM-102', 'HUM', '102', 'Lecture'),
+    ('HUM-103', 'HUM', '103', 'Lecture'),
+    ('HUM-104', 'HUM', '104', 'Lecture'),
+    ('HUM-105', 'HUM', '105', 'Lecture'),
+    ('HUM-201', 'HUM', '201', 'Lecture'),
+    ('HUM-202', 'HUM', '202', 'Lecture'),
+    ('HUM-203', 'HUM', '203', 'Lecture'),
+    ('HUM-204', 'HUM', '204', 'Lecture'),
+    ('HUM-205', 'HUM', '205', 'Lecture'),
+
+    -- Arts Center
+    ('ARTS-101', 'ARTS', '101', 'Lecture'),
+    ('ARTS-102', 'ARTS', '102', 'Lecture'),
+    ('ARTS-103', 'ARTS', '103', 'Lecture'),
+    ('ARTS-201', 'ARTS', '201', 'Lab'),
+    ('ARTS-202', 'ARTS', '202', 'Lab'),
+    ('ARTS-203', 'ARTS', '203', 'Lab'),
+
+    -- Faculty Office Building
+    ('FAC-101', 'FAC', '101', 'Office'),
+    ('FAC-102', 'FAC', '102', 'Office'),
+    ('FAC-103', 'FAC', '103', 'Office'),
+    ('FAC-104', 'FAC', '104', 'Office'),
+    ('FAC-105', 'FAC', '105', 'Office'),
+    ('FAC-106', 'FAC', '106', 'Office'),
+    ('FAC-107', 'FAC', '107', 'Office'),
+    ('FAC-108', 'FAC', '108', 'Office'),
+    ('FAC-109', 'FAC', '109', 'Office'),
+    ('FAC-110', 'FAC', '110', 'Office'),
+    ('FAC-111', 'FAC', '111', 'Office'),
+    ('FAC-112', 'FAC', '112', 'Office'),
+    ('FAC-113', 'FAC', '113', 'Office'),
+    ('FAC-114', 'FAC', '114', 'Office'),
+    ('FAC-115', 'FAC', '115', 'Office'),
+    ('FAC-116', 'FAC', '116', 'Office'),
+    ('FAC-117', 'FAC', '117', 'Office'),
+    ('FAC-118', 'FAC', '118', 'Office'),
+    ('FAC-119', 'FAC', '119', 'Office'),
+    ('FAC-120', 'FAC', '120', 'Office'),
+    ('FAC-121', 'FAC', '121', 'Office'),
+    ('FAC-122', 'FAC', '122', 'Office'),
+    ('FAC-123', 'FAC', '123', 'Office'),
+    ('FAC-124', 'FAC', '124', 'Office'),
+    ('FAC-125', 'FAC', '125', 'Office'),
+    ('FAC-126', 'FAC', '126', 'Office'),
+    ('FAC-127', 'FAC', '127', 'Office'),
+    ('FAC-128', 'FAC', '128', 'Office'),
+    ('FAC-129', 'FAC', '129', 'Office'),
+    ('FAC-130', 'FAC', '130', 'Office'),
+    ('FAC-131', 'FAC', '131', 'Office'),
+    ('FAC-132', 'FAC', '132', 'Office'),
+    ('FAC-133', 'FAC', '133', 'Office'),
+    ('FAC-134', 'FAC', '134', 'Office'),
+    ('FAC-135', 'FAC', '135', 'Office'),
+    ('FAC-136', 'FAC', '136', 'Office'),
+    ('FAC-137', 'FAC', '137', 'Office'),
+    ('FAC-138', 'FAC', '138', 'Office'),
+    ('FAC-139', 'FAC', '139', 'Office'),
+    ('FAC-140', 'FAC', '140', 'Office'),
+    ('FAC-141', 'FAC', '141', 'Office'),
+    ('FAC-142', 'FAC', '142', 'Office'),
+    ('FAC-143', 'FAC', '143', 'Office'),
+    ('FAC-144', 'FAC', '144', 'Office'),
+    ('FAC-145', 'FAC', '145', 'Office'),
+    ('FAC-146', 'FAC', '146', 'Office'),
+    ('FAC-147', 'FAC', '147', 'Office'),
+    ('FAC-148', 'FAC', '148', 'Office'),
+    ('FAC-149', 'FAC', '149', 'Office'),
+    ('FAC-150', 'FAC', '150', 'Office'),
+    ('FAC-151', 'FAC', '151', 'Office'),
+    ('FAC-152', 'FAC', '152', 'Office'),
+    ('FAC-153', 'FAC', '153', 'Office'),
+    ('FAC-154', 'FAC', '154', 'Office'),
+    ('FAC-155', 'FAC', '155', 'Office'),
+    ('FAC-201', 'FAC', '201', 'Office'),
+    ('FAC-202', 'FAC', '202', 'Office'),
+    ('FAC-203', 'FAC', '203', 'Office'),
+    ('FAC-204', 'FAC', '204', 'Office'),
+    ('FAC-205', 'FAC', '205', 'Office'),
+    ('FAC-206', 'FAC', '206', 'Office'),
+    ('FAC-207', 'FAC', '207', 'Office'),
+    ('FAC-208', 'FAC', '208', 'Office'),
+    ('FAC-209', 'FAC', '209', 'Office'),
+    ('FAC-210', 'FAC', '210', 'Office'),
+    ('FAC-211', 'FAC', '211', 'Office'),
+    ('FAC-212', 'FAC', '212', 'Office'),
+    ('FAC-213', 'FAC', '213', 'Office'),
+    ('FAC-214', 'FAC', '214', 'Office'),
+    ('FAC-215', 'FAC', '215', 'Office'),
+    ('FAC-216', 'FAC', '216', 'Office'),
+    ('FAC-217', 'FAC', '217', 'Office'),
+    ('FAC-218', 'FAC', '218', 'Office'),
+    ('FAC-219', 'FAC', '219', 'Office'),
+    ('FAC-220', 'FAC', '220', 'Office'),
+    ('FAC-221', 'FAC', '221', 'Office'),
+    ('FAC-222', 'FAC', '222', 'Office'),
+    ('FAC-223', 'FAC', '223', 'Office'),
+    ('FAC-224', 'FAC', '224', 'Office'),
+    ('FAC-225', 'FAC', '225', 'Office'),
+    ('FAC-226', 'FAC', '226', 'Office'),
+    ('FAC-227', 'FAC', '227', 'Office'),
+    ('FAC-228', 'FAC', '228', 'Office'),
+    ('FAC-229', 'FAC', '229', 'Office'),
+    ('FAC-230', 'FAC', '230', 'Office'),
+    ('FAC-231', 'FAC', '231', 'Office'),
+    ('FAC-232', 'FAC', '232', 'Office'),
+    ('FAC-233', 'FAC', '233', 'Office'),
+    ('FAC-234', 'FAC', '234', 'Office'),
+    ('FAC-235', 'FAC', '235', 'Office'),
+    ('FAC-236', 'FAC', '236', 'Office'),
+    ('FAC-237', 'FAC', '237', 'Office'),
+    ('FAC-238', 'FAC', '238', 'Office'),
+    ('FAC-239', 'FAC', '239', 'Office'),
+    ('FAC-240', 'FAC', '240', 'Office'),
+    ('FAC-241', 'FAC', '241', 'Office'),
+    ('FAC-242', 'FAC', '242', 'Office'),
+    ('FAC-243', 'FAC', '243', 'Office'),
+    ('FAC-244', 'FAC', '244', 'Office'),
+    ('FAC-245', 'FAC', '245', 'Office'),
+    ('FAC-246', 'FAC', '246', 'Office'),
+    ('FAC-247', 'FAC', '247', 'Office'),
+    ('FAC-248', 'FAC', '248', 'Office'),
+    ('FAC-249', 'FAC', '249', 'Office'),
+    ('FAC-250', 'FAC', '250', 'Office'),
+    ('FAC-251', 'FAC', '251', 'Office'),
+    ('FAC-252', 'FAC', '252', 'Office'),
+    ('FAC-253', 'FAC', '253', 'Office'),
+    ('FAC-254', 'FAC', '254', 'Office'),
+    ('FAC-255', 'FAC', '255', 'Office'),
+    ('FAC-301', 'FAC', '301', 'Office'),
+    ('FAC-302', 'FAC', '302', 'Office'),
+    ('FAC-303', 'FAC', '303', 'Office'),
+    ('FAC-304', 'FAC', '304', 'Office'),
+    ('FAC-305', 'FAC', '305', 'Office'),
+    ('FAC-306', 'FAC', '306', 'Office'),
+    ('FAC-307', 'FAC', '307', 'Office'),
+    ('FAC-308', 'FAC', '308', 'Office'),
+    ('FAC-309', 'FAC', '309', 'Office'),
+    ('FAC-310', 'FAC', '310', 'Office'),
+    ('FAC-311', 'FAC', '311', 'Office'),
+    ('FAC-312', 'FAC', '312', 'Office'),
+    ('FAC-313', 'FAC', '313', 'Office'),
+    ('FAC-314', 'FAC', '314', 'Office'),
+    ('FAC-315', 'FAC', '315', 'Office'),
+    ('FAC-316', 'FAC', '316', 'Office'),
+    ('FAC-317', 'FAC', '317', 'Office'),
+    ('FAC-318', 'FAC', '318', 'Office'),
+    ('FAC-319', 'FAC', '319', 'Office'),
+    ('FAC-320', 'FAC', '320', 'Office'),
+    ('FAC-321', 'FAC', '321', 'Office'),
+    ('FAC-322', 'FAC', '322', 'Office'),
+    ('FAC-323', 'FAC', '323', 'Office'),
+    ('FAC-324', 'FAC', '324', 'Office'),
+    ('FAC-325', 'FAC', '325', 'Office'),
+    ('FAC-326', 'FAC', '326', 'Office'),
+    ('FAC-327', 'FAC', '327', 'Office'),
+    ('FAC-328', 'FAC', '328', 'Office'),
+    ('FAC-329', 'FAC', '329', 'Office'),
+    ('FAC-330', 'FAC', '330', 'Office'),
+    ('FAC-331', 'FAC', '331', 'Office'),
+    ('FAC-332', 'FAC', '332', 'Office'),
+    ('FAC-333', 'FAC', '333', 'Office'),
+    ('FAC-334', 'FAC', '334', 'Office'),
+    ('FAC-335', 'FAC', '335', 'Office'),
+    ('FAC-336', 'FAC', '336', 'Office'),
+    ('FAC-337', 'FAC', '337', 'Office'),
+    ('FAC-338', 'FAC', '338', 'Office'),
+    ('FAC-339', 'FAC', '339', 'Office'),
+    ('FAC-340', 'FAC', '340', 'Office'),
+    ('FAC-341', 'FAC', '341', 'Office'),
+    ('FAC-342', 'FAC', '342', 'Office'),
+    ('FAC-343', 'FAC', '343', 'Office'),
+    ('FAC-344', 'FAC', '344', 'Office'),
+    ('FAC-345', 'FAC', '345', 'Office'),
+    ('FAC-346', 'FAC', '346', 'Office'),
+    ('FAC-347', 'FAC', '347', 'Office'),
+    ('FAC-348', 'FAC', '348', 'Office'),
+    ('FAC-349', 'FAC', '349', 'Office'),
+    ('FAC-350', 'FAC', '350', 'Office'),
+    ('FAC-351', 'FAC', '351', 'Office'),
+    ('FAC-352', 'FAC', '352', 'Office'),
+    ('FAC-353', 'FAC', '353', 'Office'),
+    ('FAC-354', 'FAC', '354', 'Office'),
+    ('FAC-355', 'FAC', '355', 'Office'),
+    ('FAC-401', 'FAC', '401', 'Office'),
+    ('FAC-402', 'FAC', '402', 'Office'),
+    ('FAC-403', 'FAC', '403', 'Office'),
+    ('FAC-404', 'FAC', '404', 'Office'),
+    ('FAC-405', 'FAC', '405', 'Office'),
+    ('FAC-406', 'FAC', '406', 'Office'),
+    ('FAC-407', 'FAC', '407', 'Office'),
+    ('FAC-408', 'FAC', '408', 'Office'),
+    ('FAC-409', 'FAC', '409', 'Office'),
+    ('FAC-410', 'FAC', '410', 'Office'),
+    ('FAC-411', 'FAC', '411', 'Office'),
+    ('FAC-412', 'FAC', '412', 'Office'),
+    ('FAC-413', 'FAC', '413', 'Office'),
+    ('FAC-414', 'FAC', '414', 'Office'),
+    ('FAC-415', 'FAC', '415', 'Office'),
+    ('FAC-416', 'FAC', '416', 'Office'),
+    ('FAC-417', 'FAC', '417', 'Office'),
+    ('FAC-418', 'FAC', '418', 'Office'),
+    ('FAC-419', 'FAC', '419', 'Office'),
+    ('FAC-420', 'FAC', '420', 'Office'),
+    ('FAC-421', 'FAC', '421', 'Office'),
+    ('FAC-422', 'FAC', '422', 'Office'),
+    ('FAC-423', 'FAC', '423', 'Office'),
+    ('FAC-424', 'FAC', '424', 'Office'),
+    ('FAC-425', 'FAC', '425', 'Office');
+
+-- 3. Insert into OFFICE (capacity = desks)
+INSERT INTO OFFICE (Office_ID, Office_Desks)
+VALUES
+    ('ADMIN-101', 3),
+    ('ADMIN-102', 2),
+    ('ADMIN-103', 2),
+    ('ACAD-101', 2),
+    ('LIBN-201', 2),
+    ('LIBN-202', 3),
+    ('LIBN-203', 2),
+    ('LIBN-301', 3),
+    ('LIBN-302', 3),
+    ('LIBN-303', 3),
+    ('LIBN-304', 3),
+    ('LIBN-305', 3),
+    ('LIBN-306', 3),
+    ('LIBN-307', 3),
+    ('LIBN-308', 3),
+    ('LIBN-309', 3),
+    ('LIBN-310', 3),
+    ('LIBN-311', 3),
+    ('LIBN-312', 3),
+    ('FAC-101', 2),
+    ('FAC-102', 2),
+    ('FAC-103', 2),
+    ('FAC-104', 2),
+    ('FAC-105', 2),
+    ('FAC-106', 2),
+    ('FAC-107', 2),
+    ('FAC-108', 2),
+    ('FAC-109', 2),
+    ('FAC-110', 2),
+    ('FAC-111', 2),
+    ('FAC-112', 2),
+    ('FAC-113', 2),
+    ('FAC-114', 2),
+    ('FAC-115', 2),
+    ('FAC-116', 2),
+    ('FAC-117', 2),
+    ('FAC-118', 2),
+    ('FAC-119', 2),
+    ('FAC-120', 2),
+    ('FAC-121', 2),
+    ('FAC-122', 2),
+    ('FAC-123', 2),
+    ('FAC-124', 2),
+    ('FAC-125', 2),
+    ('FAC-126', 2),
+    ('FAC-127', 2),
+    ('FAC-128', 2),
+    ('FAC-129', 2),
+    ('FAC-130', 2),
+    ('FAC-131', 2),
+    ('FAC-132', 2),
+    ('FAC-133', 2),
+    ('FAC-134', 2),
+    ('FAC-135', 2),
+    ('FAC-136', 2),
+    ('FAC-137', 2),
+    ('FAC-138', 2),
+    ('FAC-139', 2),
+    ('FAC-140', 2),
+    ('FAC-141', 2),
+    ('FAC-142', 2),
+    ('FAC-143', 2),
+    ('FAC-144', 2),
+    ('FAC-145', 2),
+    ('FAC-146', 2),
+    ('FAC-147', 2),
+    ('FAC-148', 2),
+    ('FAC-149', 2),
+    ('FAC-150', 2),
+    ('FAC-151', 2),
+    ('FAC-152', 2),
+    ('FAC-153', 2),
+    ('FAC-154', 2),
+    ('FAC-155', 2),
+    ('FAC-201', 2),
+    ('FAC-202', 2),
+    ('FAC-203', 2),
+    ('FAC-204', 2),
+    ('FAC-205', 2),
+    ('FAC-206', 2),
+    ('FAC-207', 2),
+    ('FAC-208', 2),
+    ('FAC-209', 2),
+    ('FAC-210', 2),
+    ('FAC-211', 2),
+    ('FAC-212', 2),
+    ('FAC-213', 2),
+    ('FAC-214', 2),
+    ('FAC-215', 2),
+    ('FAC-216', 2),
+    ('FAC-217', 2),
+    ('FAC-218', 2),
+    ('FAC-219', 2),
+    ('FAC-220', 2),
+    ('FAC-221', 2),
+    ('FAC-222', 2),
+    ('FAC-223', 2),
+    ('FAC-224', 2),
+    ('FAC-225', 2),
+    ('FAC-226', 2),
+    ('FAC-227', 2),
+    ('FAC-228', 2),
+    ('FAC-229', 2),
+    ('FAC-230', 2),
+    ('FAC-231', 2),
+    ('FAC-232', 2),
+    ('FAC-233', 2),
+    ('FAC-234', 2),
+    ('FAC-235', 2),
+    ('FAC-236', 2),
+    ('FAC-237', 2),
+    ('FAC-238', 2),
+    ('FAC-239', 2),
+    ('FAC-240', 2),
+    ('FAC-241', 2),
+    ('FAC-242', 2),
+    ('FAC-243', 2),
+    ('FAC-244', 2),
+    ('FAC-245', 2),
+    ('FAC-246', 2),
+    ('FAC-247', 2),
+    ('FAC-248', 2),
+    ('FAC-249', 2),
+    ('FAC-250', 2),
+    ('FAC-251', 2),
+    ('FAC-252', 2),
+    ('FAC-253', 2),
+    ('FAC-254', 2),
+    ('FAC-255', 2),
+    ('FAC-301', 2),
+    ('FAC-302', 2),
+    ('FAC-303', 2),
+    ('FAC-304', 2),
+    ('FAC-305', 2),
+    ('FAC-306', 2),
+    ('FAC-307', 2),
+    ('FAC-308', 2),
+    ('FAC-309', 2),
+    ('FAC-310', 2),
+    ('FAC-311', 2),
+    ('FAC-312', 2),
+    ('FAC-313', 2),
+    ('FAC-314', 2),
+    ('FAC-315', 2),
+    ('FAC-316', 2),
+    ('FAC-317', 2),
+    ('FAC-318', 2),
+    ('FAC-319', 2),
+    ('FAC-320', 2),
+    ('FAC-321', 2),
+    ('FAC-322', 2),
+    ('FAC-323', 2),
+    ('FAC-324', 2),
+    ('FAC-325', 2),
+    ('FAC-326', 2),
+    ('FAC-327', 2),
+    ('FAC-328', 2),
+    ('FAC-329', 2),
+    ('FAC-330', 2),
+    ('FAC-331', 2),
+    ('FAC-332', 2),
+    ('FAC-333', 2),
+    ('FAC-334', 2),
+    ('FAC-335', 2),
+    ('FAC-336', 2),
+    ('FAC-337', 2),
+    ('FAC-338', 2),
+    ('FAC-339', 2),
+    ('FAC-340', 2),
+    ('FAC-341', 2),
+    ('FAC-342', 2),
+    ('FAC-343', 2),
+    ('FAC-344', 2),
+    ('FAC-345', 2),
+    ('FAC-346', 2),
+    ('FAC-347', 2),
+    ('FAC-348', 2),
+    ('FAC-349', 2),
+    ('FAC-350', 2),
+    ('FAC-351', 2),
+    ('FAC-352', 2),
+    ('FAC-353', 2),
+    ('FAC-354', 2),
+    ('FAC-355', 2),
+    ('FAC-401', 4),
+    ('FAC-402', 4),
+    ('FAC-403', 4),
+    ('FAC-404', 4),
+    ('FAC-405', 4),
+    ('FAC-406', 4),
+    ('FAC-407', 4),
+    ('FAC-408', 4),
+    ('FAC-409', 4),
+    ('FAC-410', 4),
+    ('FAC-411', 4),
+    ('FAC-412', 4),
+    ('FAC-413', 4),
+    ('FAC-414', 4),
+    ('FAC-415', 4),
+    ('FAC-416', 4),
+    ('FAC-417', 4),
+    ('FAC-418', 4),
+    ('FAC-419', 4),
+    ('FAC-420', 4),
+    ('FAC-421', 4),
+    ('FAC-422', 4),
+    ('FAC-423', 4),
+    ('FAC-424', 4),
+    ('FAC-425', 4);
+
+-- 4. Insert into LAB (capacity = stations)
+INSERT INTO LAB (Lab_ID, Lab_Stations)
+VALUES
+    ('SCI-101', 24),
+    ('SCI-102', 30),
+    ('SCI-201', 24),
+    ('SCI-202', 28),
+    ('SCI-203', 30),
+    ('ENG-101', 25),
+    ('ENG-102', 20),
+    ('ENG-201', 24),
+    ('ENG-202', 20),
+    ('ARTS-201', 16),
+    ('ARTS-202', 18),
+    ('ARTS-203', 20);
+
+-- 5. Insert into LECTURE (capacity = seats)
+INSERT INTO LECTURE (Lecture_ID, Lecture_Seats)
+VALUES
+    ('SCI-103', 25),
+    ('SCI-104', 30),
+    ('SCI-105', 24),
+    ('SCI-106', 28),
+    ('SCI-107', 30),
+    ('ENG-103', 28),
+    ('ENG-104', 22),
+    ('ENG-105', 25),
+    ('ENG-106', 32),
+    ('ACAD-102', 25),
+    ('ACAD-103', 30),
+    ('ACAD-104', 35),
+    ('ACAD-105', 40),
+    ('ACAD-106', 30),
+    ('ACAD-201', 25),
+    ('ACAD-202', 28),
+    ('ACAD-203', 24),
+    ('ACAD-204', 28),
+    ('ACAD-205', 30),
+    ('ACAD-206', 25),
+    ('ACAD-207', 32),
+    ('LIBN-204', 20),
+    ('LIBS-101', 28),
+    ('LIBS-102', 24),
+    ('LIBS-103', 30),
+    ('ACAD-208', 25),
+    ('ACAD-209', 20),
+    ('HUM-101', 30),
+    ('HUM-102', 25),
+    ('HUM-103', 32),
+    ('HUM-104', 35),
+    ('HUM-105', 40),
+    ('HUM-201', 30),
+    ('HUM-202', 25),
+    ('HUM-203', 28),
+    ('HUM-204', 24),
+    ('HUM-205', 28),
+    ('ARTS-101', 25),
+    ('ARTS-102', 28),
+    ('ARTS-103', 30);
+
+
+-- Hold types a student account can have (Financial, Academic, Health, Disciplinary).
+-- Run AFTER schema.sql.
+INSERT INTO HOLDS (Hold_ID, Hold_Type) VALUES
+(1, 'Financial'),
+(2, 'Academic'),
+(3, 'Health'),
+(4, 'Disciplinary');
+
+
+-- 1. Populate SEMESTER (Includes academic Start_Date and End_Date)
+INSERT INTO SEMESTER (Semester_ID, Semester_Name, Semester_Year, Start_Date, End_Date) VALUES
+(202208, 'Fall',   2022, '2022-08-29', '2022-12-19'),
+(202301, 'Spring', 2023, '2023-01-23', '2023-05-18'),
+(202308, 'Fall',   2023, '2023-08-28', '2023-12-18'),
+(202401, 'Spring', 2024, '2024-01-22', '2024-05-16'),
+(202408, 'Fall',   2024, '2024-08-26', '2024-12-16'),
+(202501, 'Spring', 2025, '2025-01-21', '2025-05-15'),
+(202508, 'Fall',   2025, '2025-08-25', '2025-12-15'),
+(202601, 'Spring', 2026, '2026-01-20', '2026-05-14'),
+(202608, 'Fall',   2026, '2026-08-31', '2026-12-21'),
+(202701, 'Spring', 2027, '2027-01-25', '2027-05-20');
+
+-- 2. Populate INFORMATION_RELATION (Registration, Drop, and Grade Recording Deadlines)
+INSERT INTO INFORMATION_RELATION (
+    Semester_ID,
+    Last_Day_Of_Registration,
+    Last_Day_Of_Dropping_Course,
+    Date_Of_Midterm_Grade_Recording,
+    Date_Of_Final_Grades_Recording
+) VALUES 
+(202208, '2022-09-05', '2022-09-19', '2022-10-17', '2022-12-22'),
+(202301, '2023-01-30', '2023-02-13', '2023-03-15', '2023-05-21'),
+(202308, '2023-09-04', '2023-09-18', '2023-10-16', '2023-12-21'),
+(202401, '2024-01-29', '2024-02-12', '2024-03-14', '2024-05-19'),
+(202408, '2024-09-02', '2024-09-16', '2024-10-14', '2024-12-19'),
+(202501, '2025-01-28', '2025-02-11', '2025-03-13', '2025-05-18'),
+(202508, '2025-09-01', '2025-09-15', '2025-10-13', '2025-12-18'),
+(202601, '2026-01-27', '2026-02-10', '2026-03-12', '2026-05-17'),
+(202608, '2026-09-07', '2026-09-21', '2026-10-15', '2026-12-22'),
+(202701, '2027-02-01', '2027-02-15', '2027-03-15', '2027-05-23');
+
+
+-- ============================================================================
+-- DEPARTMENTS (12 academic departments, Chair_ID assigned during faculty generation)
+-- ============================================================================
+INSERT INTO DEPARTMENT (Department_ID, Department_Name, Department_Email, Department_Phone, Office_ID)
+VALUES
+(1, 'Computer Science', 'CompSciDept@Lucid.edu', '9417441085', 'LIBN-301'),
+(2, 'Physics', 'PhysicsDept@Lucid.edu', '3809975286', 'LIBN-302'),
+(3, 'English', 'EnglishDept@Lucid.edu', '3252938628', 'LIBN-303'),
+(4, 'Psychology', 'PsychologyDept@Lucid.edu', '8187848925', 'LIBN-304'),
+(5, 'Mathematics', 'MathDept@Lucid.edu', '9193065764', 'LIBN-305'),
+(6, 'History', 'HistoryDept@Lucid.edu', '7473813355', 'LIBN-306'),
+(7, 'Economics', 'EconDept@Lucid.edu', '6825504432', 'LIBN-307'),
+(8, 'Philosophy', 'PhilosophyDept@Lucid.edu', '2344844302', 'LIBN-308'),
+(9, 'Engineering', 'EngineeringDept@Lucid.edu', '4402601702', 'LIBN-309'),
+(10, 'Biology', 'BiologyDept@Lucid.edu', '9093810048', 'LIBN-310'),
+(11, 'Art', 'ArtDept@Lucid.edu', '6789047659', 'LIBN-311'),
+(12, 'Astronomy', 'AstronomyDept@Lucid.edu', '4694102072', 'LIBN-312');
+
+-- ============================================================================
 -- LUCID UNIVERSITY: COURSES SEED DATA (FINAL)
 -- Run AFTER the DEPARTMENT seed file (Courses.Department_ID is a foreign key).
 -- ============================================================================
@@ -703,3 +1421,530 @@ VALUES
 
 
 
+
+
+-- ============================================================================
+-- MAJORS / MINORS
+-- Run AFTER the schema, DEPARTMENT and COURSES seed files.
+-- ============================================================================
+
+INSERT INTO MAJORS (Major_ID, Department_ID, Major_Name, No_Credits_Required)
+VALUES
+(101, 1, 'Computer Science (B.S.)', 120),
+(102, 1, 'Computer Science (M.S.)', 24),
+(103, 2, 'Physics (B.S.)', 120),
+(104, 2, 'Physics (M.S.)', 24),
+(105, 3, 'English (B.A.)', 120),
+(106, 3, 'English (M.A.)', 24),
+(107, 4, 'Psychology (B.S.)', 120),
+(108, 4, 'Psychology (M.S.)', 24),
+(109, 5, 'Mathematics (B.S.)', 120),
+(110, 5, 'Mathematics (M.S.)', 24),
+(111, 6, 'History (B.A.)', 120),
+(112, 6, 'History (M.A.)', 24),
+(113, 7, 'Economics (B.S.)', 120),
+(114, 7, 'Economics (M.S.)', 24),
+(115, 8, 'Philosophy (B.A.)', 120),
+(116, 8, 'Philosophy (M.A.)', 24),
+(117, 9, 'Engineering (B.S.)', 120),
+(118, 9, 'Engineering (M.S.)', 24),
+(119, 10, 'Biology (B.S.)', 120),
+(120, 10, 'Biology (M.S.)', 24),
+(121, 11, 'Art (B.A.)', 120),
+(122, 11, 'Art (M.F.A.)', 24),
+(123, 12, 'Astronomy (B.S.)', 120),
+(124, 12, 'Astronomy (M.S.)', 24),
+-- Ph.D. programs (one per department): Major_ID = 124 + Department_ID
+(125, 1, 'Computer Science (Ph.D.)', 60),
+(126, 2, 'Physics (Ph.D.)', 60),
+(127, 3, 'English (Ph.D.)', 60),
+(128, 4, 'Psychology (Ph.D.)', 60),
+(129, 5, 'Mathematics (Ph.D.)', 60),
+(130, 6, 'History (Ph.D.)', 60),
+(131, 7, 'Economics (Ph.D.)', 60),
+(132, 8, 'Philosophy (Ph.D.)', 60),
+(133, 9, 'Engineering (Ph.D.)', 60),
+(134, 10, 'Biology (Ph.D.)', 60),
+(135, 11, 'Art (Ph.D.)', 60),
+(136, 12, 'Astronomy (Ph.D.)', 60);
+
+INSERT INTO MINORS (Minor_ID, Department_ID, Minor_Name, No_Credits_Required)
+
+VALUES
+(1,  1,  'Computer Science Minor', 20),
+(2,  2,  'Physics Minor', 20),
+(3,  3,  'English Minor', 20),
+(4,  4,  'Psychology Minor', 20),
+(5,  5,  'Mathematics Minor', 20),
+(6,  6,  'History Minor', 20),
+(7,  7,  'Economics Minor', 20),
+(8,  8,  'Philosophy Minor', 20),
+(9,  9,  'Engineering Minor', 20),
+(10,  10, 'Biology Minor', 20),
+(11,  11, 'Art Minor', 20),
+(12,  12, 'Astronomy Minor', 20);
+
+INSERT INTO MAJOR_REQUIREMENTS (Major_ID, Course_ID, Min_Grade)
+VALUES
+    (101, 'CS100', 'C'),
+    (101, 'CS101', 'C'),
+    (101, 'CS110', 'C'),
+    (101, 'CS120', 'C'),
+    (101, 'CS150', 'C'),
+    (101, 'CS200', 'C'),
+    (101, 'CS210', 'C'),
+    (101, 'CS220', 'C'),
+    (101, 'CS250', 'C'),
+    (101, 'CS300', 'C'),
+    (102, 'CS500', 'B'),
+    (102, 'CS510', 'B'),
+    (102, 'CS520', 'B'),
+    (102, 'CS550', 'B'),
+    (102, 'CS600', 'B'),
+    (102, 'CS610', 'B'),
+
+    (103, 'PX100', 'C'),
+    (103, 'PX101', 'C'),
+    (103, 'PX110', 'C'),
+    (103, 'PX120', 'C'),
+    (103, 'PX150', 'C'),
+    (103, 'PX200', 'C'),
+    (103, 'PX210', 'C'),
+    (103, 'PX220', 'C'),
+    (103, 'PX250', 'C'),
+    (103, 'PX300', 'C'),
+    (104, 'PX500', 'B'),
+    (104, 'PX510', 'B'),
+    (104, 'PX520', 'B'),
+    (104, 'PX550', 'B'),
+    (104, 'PX600', 'B'),
+    (104, 'PX610', 'B'),
+
+    (105, 'EN100', 'C'),
+    (105, 'EN101', 'C'),
+    (105, 'EN110', 'C'),
+    (105, 'EN120', 'C'),
+    (105, 'EN150', 'C'),
+    (105, 'EN200', 'C'),
+    (105, 'EN210', 'C'),
+    (105, 'EN220', 'C'),
+    (105, 'EN250', 'C'),
+    (105, 'EN300', 'C'),
+    (106, 'EN500', 'B'),
+    (106, 'EN510', 'B'),
+    (106, 'EN520', 'B'),
+    (106, 'EN550', 'B'),
+    (106, 'EN600', 'B'),
+    (106, 'EN610', 'B'),
+
+    (107, 'PS100', 'C'),
+    (107, 'PS101', 'C'),
+    (107, 'PS110', 'C'),
+    (107, 'PS120', 'C'),
+    (107, 'PS150', 'C'),
+    (107, 'PS200', 'C'),
+    (107, 'PS210', 'C'),
+    (107, 'PS220', 'C'),
+    (107, 'PS250', 'C'),
+    (107, 'PS300', 'C'),
+    (108, 'PS500', 'B'),
+    (108, 'PS510', 'B'),
+    (108, 'PS520', 'B'),
+    (108, 'PS550', 'B'),
+    (108, 'PS600', 'B'),
+    (108, 'PS610', 'B'),
+
+    (109, 'MA100', 'C'),
+    (109, 'MA101', 'C'),
+    (109, 'MA110', 'C'),
+    (109, 'MA120', 'C'),
+    (109, 'MA150', 'C'),
+    (109, 'MA200', 'C'),
+    (109, 'MA210', 'C'),
+    (109, 'MA220', 'C'),
+    (109, 'MA250', 'C'),
+    (109, 'MA300', 'C'),
+    (110, 'MA500', 'B'),
+    (110, 'MA510', 'B'),
+    (110, 'MA520', 'B'),
+    (110, 'MA550', 'B'),
+    (110, 'MA600', 'B'),
+    (110, 'MA610', 'B'),
+
+    (111, 'HI100', 'C'),
+    (111, 'HI101', 'C'),
+    (111, 'HI110', 'C'),
+    (111, 'HI120', 'C'),
+    (111, 'HI150', 'C'),
+    (111, 'HI200', 'C'),
+    (111, 'HI210', 'C'),
+    (111, 'HI220', 'C'),
+    (111, 'HI250', 'C'),
+    (111, 'HI300', 'C'),
+    (112, 'HI500', 'B'),
+    (112, 'HI510', 'B'),
+    (112, 'HI520', 'B'),
+    (112, 'HI550', 'B'),
+    (112, 'HI600', 'B'),
+    (112, 'HI610', 'B'),
+
+    (113, 'EC100', 'C'),
+    (113, 'EC101', 'C'),
+    (113, 'EC110', 'C'),
+    (113, 'EC120', 'C'),
+    (113, 'EC150', 'C'),
+    (113, 'EC200', 'C'),
+    (113, 'EC210', 'C'),
+    (113, 'EC220', 'C'),
+    (113, 'EC250', 'C'),
+    (113, 'EC300', 'C'),
+    (114, 'EC500', 'B'),
+    (114, 'EC510', 'B'),
+    (114, 'EC520', 'B'),
+    (114, 'EC550', 'B'),
+    (114, 'EC600', 'B'),
+    (114, 'EC610', 'B'),
+
+    (115, 'PH100', 'C'),
+    (115, 'PH101', 'C'),
+    (115, 'PH110', 'C'),
+    (115, 'PH120', 'C'),
+    (115, 'PH150', 'C'),
+    (115, 'PH200', 'C'),
+    (115, 'PH210', 'C'),
+    (115, 'PH220', 'C'),
+    (115, 'PH250', 'C'),
+    (115, 'PH300', 'C'),
+    (116, 'PH500', 'B'),
+    (116, 'PH510', 'B'),
+    (116, 'PH520', 'B'),
+    (116, 'PH550', 'B'),
+    (116, 'PH600', 'B'),
+    (116, 'PH610', 'B'),
+
+    (117, 'EG100', 'C'),
+    (117, 'EG101', 'C'),
+    (117, 'EG110', 'C'),
+    (117, 'EG120', 'C'),
+    (117, 'EG150', 'C'),
+    (117, 'EG200', 'C'),
+    (117, 'EG210', 'C'),
+    (117, 'EG220', 'C'),
+    (117, 'EG250', 'C'),
+    (117, 'EG300', 'C'),
+    (118, 'EG500', 'B'),
+    (118, 'EG510', 'B'),
+    (118, 'EG520', 'B'),
+    (118, 'EG550', 'B'),
+    (118, 'EG600', 'B'),
+    (118, 'EG610', 'B'),
+
+    (119, 'BO100', 'C'),
+    (119, 'BO101', 'C'),
+    (119, 'BO110', 'C'),
+    (119, 'BO120', 'C'),
+    (119, 'BO150', 'C'),
+    (119, 'BO200', 'C'),
+    (119, 'BO210', 'C'),
+    (119, 'BO220', 'C'),
+    (119, 'BO250', 'C'),
+    (119, 'BO300', 'C'),
+    (120, 'BO500', 'B'),
+    (120, 'BO510', 'B'),
+    (120, 'BO520', 'B'),
+    (120, 'BO550', 'B'),
+    (120, 'BO600', 'B'),
+    (120, 'BO610', 'B'),
+
+    (121, 'AT100', 'C'),
+    (121, 'AT101', 'C'),
+    (121, 'AT110', 'C'),
+    (121, 'AT120', 'C'),
+    (121, 'AT150', 'C'),
+    (121, 'AT200', 'C'),
+    (121, 'AT210', 'C'),
+    (121, 'AT220', 'C'),
+    (121, 'AT250', 'C'),
+    (121, 'AT300', 'C'),
+    (122, 'AT500', 'B'),
+    (122, 'AT510', 'B'),
+    (122, 'AT520', 'B'),
+    (122, 'AT550', 'B'),
+    (122, 'AT600', 'B'),
+    (122, 'AT610', 'B'),
+
+    (123, 'AS100', 'C'),
+    (123, 'AS101', 'C'),
+    (123, 'AS110', 'C'),
+    (123, 'AS120', 'C'),
+    (123, 'AS150', 'C'),
+    (123, 'AS200', 'C'),
+    (123, 'AS210', 'C'),
+    (123, 'AS220', 'C'),
+    (123, 'AS250', 'C'),
+    (123, 'AS300', 'C'),
+    (124, 'AS500', 'B'),
+    (124, 'AS510', 'B'),
+    (124, 'AS520', 'B'),
+    (124, 'AS550', 'B'),
+    (124, 'AS600', 'B'),
+    (124, 'AS610', 'B'),
+
+    -- Ph.D. core: the 6 graduate core courses + the doctoral seminar (28 credits).
+    -- The other 32 of the 60 credits come from any graduate course in the department.
+    (125, 'CS500', 'B'),
+    (125, 'CS510', 'B'),
+    (125, 'CS520', 'B'),
+    (125, 'CS550', 'B'),
+    (125, 'CS600', 'B'),
+    (125, 'CS610', 'B'),
+    (125, 'CS690', 'B'),
+    (126, 'PX500', 'B'),
+    (126, 'PX510', 'B'),
+    (126, 'PX520', 'B'),
+    (126, 'PX550', 'B'),
+    (126, 'PX600', 'B'),
+    (126, 'PX610', 'B'),
+    (126, 'PX690', 'B'),
+    (127, 'EN500', 'B'),
+    (127, 'EN510', 'B'),
+    (127, 'EN520', 'B'),
+    (127, 'EN550', 'B'),
+    (127, 'EN600', 'B'),
+    (127, 'EN610', 'B'),
+    (127, 'EN690', 'B'),
+    (128, 'PS500', 'B'),
+    (128, 'PS510', 'B'),
+    (128, 'PS520', 'B'),
+    (128, 'PS550', 'B'),
+    (128, 'PS600', 'B'),
+    (128, 'PS610', 'B'),
+    (128, 'PS690', 'B'),
+    (129, 'MA500', 'B'),
+    (129, 'MA510', 'B'),
+    (129, 'MA520', 'B'),
+    (129, 'MA550', 'B'),
+    (129, 'MA600', 'B'),
+    (129, 'MA610', 'B'),
+    (129, 'MA690', 'B'),
+    (130, 'HI500', 'B'),
+    (130, 'HI510', 'B'),
+    (130, 'HI520', 'B'),
+    (130, 'HI550', 'B'),
+    (130, 'HI600', 'B'),
+    (130, 'HI610', 'B'),
+    (130, 'HI690', 'B'),
+    (131, 'EC500', 'B'),
+    (131, 'EC510', 'B'),
+    (131, 'EC520', 'B'),
+    (131, 'EC550', 'B'),
+    (131, 'EC600', 'B'),
+    (131, 'EC610', 'B'),
+    (131, 'EC690', 'B'),
+    (132, 'PH500', 'B'),
+    (132, 'PH510', 'B'),
+    (132, 'PH520', 'B'),
+    (132, 'PH550', 'B'),
+    (132, 'PH600', 'B'),
+    (132, 'PH610', 'B'),
+    (132, 'PH690', 'B'),
+    (133, 'EG500', 'B'),
+    (133, 'EG510', 'B'),
+    (133, 'EG520', 'B'),
+    (133, 'EG550', 'B'),
+    (133, 'EG600', 'B'),
+    (133, 'EG610', 'B'),
+    (133, 'EG690', 'B'),
+    (134, 'BO500', 'B'),
+    (134, 'BO510', 'B'),
+    (134, 'BO520', 'B'),
+    (134, 'BO550', 'B'),
+    (134, 'BO600', 'B'),
+    (134, 'BO610', 'B'),
+    (134, 'BO690', 'B'),
+    (135, 'AT500', 'B'),
+    (135, 'AT510', 'B'),
+    (135, 'AT520', 'B'),
+    (135, 'AT550', 'B'),
+    (135, 'AT600', 'B'),
+    (135, 'AT610', 'B'),
+    (135, 'AT690', 'B'),
+    (136, 'AS500', 'B'),
+    (136, 'AS510', 'B'),
+    (136, 'AS520', 'B'),
+    (136, 'AS550', 'B'),
+    (136, 'AS600', 'B'),
+    (136, 'AS610', 'B'),
+    (136, 'AS690', 'B');
+
+-- Cross-Department Foundational Requirements for Undergraduate Programs
+INSERT INTO MAJOR_REQUIREMENTS (Major_ID, Course_ID, Min_Grade)
+VALUES
+    (101, 'MA110', 'C'), (101, 'MA150', 'C'), (101, 'PX100', 'C'), (101, 'PX101', 'C'),
+    (103, 'MA110', 'C'), (103, 'MA120', 'C'), (103, 'CS100', 'C'), (103, 'AS100', 'C'),
+    (105, 'HI100', 'C'), (105, 'HI101', 'C'), (105, 'PH100', 'C'), (105, 'AT100', 'C'),
+    (107, 'MA150', 'C'), (107, 'BO100', 'C'), (107, 'BO101', 'C'), (107, 'PH100', 'C'),
+    (109, 'CS100', 'C'), (109, 'CS101', 'C'), (109, 'PX100', 'C'), (109, 'PX101', 'C'),
+    (111, 'EN100', 'C'), (111, 'EN101', 'C'), (111, 'EC100', 'C'), (111, 'PH100', 'C'),
+    (113, 'MA100', 'C'), (113, 'MA110', 'C'), (113, 'MA150', 'C'), (113, 'HI101', 'C'),
+    (115, 'EN100', 'C'), (115, 'HI100', 'C'), (115, 'PS100', 'C'), (115, 'EC100', 'C'),
+    (117, 'MA110', 'C'), (117, 'MA120', 'C'), (117, 'PX100', 'C'), (117, 'PX101', 'C'),
+    (119, 'MA100', 'C'), (119, 'MA150', 'C'), (119, 'PX100', 'C'), (119, 'PS100', 'C'),
+    (121, 'EN100', 'C'), (121, 'HI100', 'C'), (121, 'PH100', 'C'), (121, 'PS100', 'C'),
+    (123, 'PX100', 'C'), (123, 'PX101', 'C'), (123, 'MA110', 'C'), (123, 'MA120', 'C');
+
+INSERT INTO MINOR_REQUIREMENTS (Minor_ID, Course_ID, Min_Grade)
+VALUES
+    (1, 'CS100', 'C'),
+    (1, 'CS120', 'C'),
+    (1, 'CS150', 'C'),
+    (1, 'CS220', 'C'),
+    (1, 'CS250', 'C'),
+
+    (2, 'PX100', 'C'),
+    (2, 'PX120', 'C'),
+    (2, 'PX150', 'C'),
+    (2, 'PX200', 'C'),
+    (2, 'PX220', 'C'),
+
+    (3, 'EN100', 'C'),
+    (3, 'EN101', 'C'),
+    (3, 'EN110', 'C'),
+    (3, 'EN120', 'C'),
+    (3, 'EN150', 'C'),
+
+    (4, 'PS100', 'C'),
+    (4, 'PS110', 'C'),
+    (4, 'PS120', 'C'),
+    (4, 'PS150', 'C'),
+    (4, 'PS200', 'C'),
+
+    (5, 'MA100', 'C'),
+    (5, 'MA150', 'C'),
+    (5, 'MA200', 'C'),
+    (5, 'MA220', 'C'),
+    (5, 'MA250', 'C'),
+
+    (6, 'HI100', 'C'),
+    (6, 'HI101', 'C'),
+    (6, 'HI110', 'C'),
+    (6, 'HI120', 'C'),
+    (6, 'HI150', 'C'),
+
+    (7, 'EC100', 'C'),
+    (7, 'EC101', 'C'),
+    (7, 'EC110', 'C'),
+    (7, 'EC150', 'C'),
+    (7, 'EC200', 'C'),
+
+    (8, 'PH100', 'C'),
+    (8, 'PH101', 'C'),
+    (8, 'PH110', 'C'),
+    (8, 'PH120', 'C'),
+    (8, 'PH150', 'C'),
+
+    (9, 'EG100', 'C'),
+    (9, 'EG101', 'C'),
+    (9, 'EG150', 'C'),
+    (9, 'EG210', 'C'),
+    (9, 'EG250', 'C'),
+
+    (10, 'BO100', 'C'),
+    (10, 'BO120', 'C'),
+    (10, 'BO150', 'C'),
+    (10, 'BO200', 'C'),
+    (10, 'BO210', 'C'),
+
+    (11, 'AT100', 'C'),
+    (11, 'AT101', 'C'),
+    (11, 'AT110', 'C'),
+    (11, 'AT120', 'C'),
+    (11, 'AT150', 'C'),
+
+    (12, 'AS100', 'C'),
+    (12, 'AS101', 'C'),
+    (12, 'AS110', 'C'),
+    (12, 'AS120', 'C'),
+    (12, 'AS150', 'C');
+
+
+DELIMITER $$
+
+DROP PROCEDURE IF EXISTS SeedPrerequisites$$
+
+CREATE PROCEDURE SeedPrerequisites()
+BEGIN
+    DECLARE v_dept INT DEFAULT 1;
+    DECLARE v_prefix VARCHAR(5);
+
+    START TRANSACTION;
+    DELETE FROM COURSE_PREREQUISITE;
+
+    WHILE v_dept <= 12 DO
+        SET v_prefix = ELT(v_dept, 'CS', 'PX', 'EN', 'PS', 'MA', 'HI', 'EC', 'PH', 'EG', 'BO', 'AT', 'AS');
+
+        -- 1. 100-level courses have NO prerequisites among each other.
+        -- Freshmen can take xx100, xx120, xx101, xx110, xx130, xx150, xx160 in any order.
+
+        -- 2. TIER 2: ALL 200-level courses require BOTH xx100 and xx120
+        INSERT INTO COURSE_PREREQUISITE (Prerequisite_Course_ID, Course_ID)
+        SELECT CONCAT(v_prefix, '100'), Course_ID
+        FROM COURSES 
+        WHERE Department_ID = v_dept 
+          AND Course_Type = 'Undergraduate' 
+          AND Course_ID REGEXP CONCAT('^', v_prefix, '2[0-9]{2}$');
+
+        INSERT INTO COURSE_PREREQUISITE (Prerequisite_Course_ID, Course_ID)
+        SELECT CONCAT(v_prefix, '120'), Course_ID
+        FROM COURSES 
+        WHERE Department_ID = v_dept 
+          AND Course_Type = 'Undergraduate' 
+          AND Course_ID REGEXP CONCAT('^', v_prefix, '2[0-9]{2}$');
+
+        -- 3. TIER 3: ALL 300-level courses require BOTH xx200 and xx220
+        INSERT INTO COURSE_PREREQUISITE (Prerequisite_Course_ID, Course_ID)
+        SELECT CONCAT(v_prefix, '200'), Course_ID
+        FROM COURSES 
+        WHERE Department_ID = v_dept 
+          AND Course_Type = 'Undergraduate' 
+          AND Course_ID REGEXP CONCAT('^', v_prefix, '3[0-9]{2}$');
+
+        INSERT INTO COURSE_PREREQUISITE (Prerequisite_Course_ID, Course_ID)
+        SELECT CONCAT(v_prefix, '220'), Course_ID
+        FROM COURSES 
+        WHERE Department_ID = v_dept 
+          AND Course_Type = 'Undergraduate' 
+          AND Course_ID REGEXP CONCAT('^', v_prefix, '3[0-9]{2}$');
+
+        -- 4. TIER 4: 400-level electives require xx300
+        INSERT INTO COURSE_PREREQUISITE (Prerequisite_Course_ID, Course_ID)
+        SELECT CONCAT(v_prefix, '300'), Course_ID
+        FROM COURSES 
+        WHERE Department_ID = v_dept 
+          AND Course_Type = 'Undergraduate' 
+          AND Course_ID REGEXP CONCAT('^', v_prefix, '4[0-8][0-9]$');
+
+        -- 5. SENIOR CAPSTONE (xx490): Requires xx200, xx300, and xx320
+        INSERT INTO COURSE_PREREQUISITE (Prerequisite_Course_ID, Course_ID) VALUES
+        (CONCAT(v_prefix, '200'), CONCAT(v_prefix, '490')),
+        (CONCAT(v_prefix, '300'), CONCAT(v_prefix, '490')),
+        (CONCAT(v_prefix, '320'), CONCAT(v_prefix, '490'));
+
+        -- 6. GRADUATE: xx500 gates intermediate grad courses; xx500+xx600 gates xx690 seminar
+        INSERT INTO COURSE_PREREQUISITE (Prerequisite_Course_ID, Course_ID) VALUES 
+        (CONCAT(v_prefix, '500'), CONCAT(v_prefix, '510')),
+        (CONCAT(v_prefix, '500'), CONCAT(v_prefix, '520')),
+        (CONCAT(v_prefix, '500'), CONCAT(v_prefix, '600')),
+        (CONCAT(v_prefix, '500'), CONCAT(v_prefix, '690')),
+        (CONCAT(v_prefix, '600'), CONCAT(v_prefix, '690'));
+
+        SET v_dept = v_dept + 1;
+    END WHILE;
+
+    COMMIT;
+END$$
+
+DELIMITER ;
+
+CALL SeedPrerequisites();
+DROP PROCEDURE IF EXISTS SeedPrerequisites;

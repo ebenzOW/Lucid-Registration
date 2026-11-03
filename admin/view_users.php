@@ -21,7 +21,8 @@ $sql = "
         u.State,
         u.Country,
         u.Zip_Code,
-        l.User_Email
+        l.User_Email,
+        l.IsLock
     FROM `USER` u
     LEFT JOIN LOGIN l ON u.User_ID = l.User_ID
     ORDER BY u.User_ID ASC
@@ -106,6 +107,7 @@ $result = $stmt->get_result();
                             <tr>
                                 <th>User ID</th>
                                 <th>Role</th>
+                                <th>Status</th>
                                 <th>Full Name</th>
                                 <th>Email</th>
                                 <th>Gender</th>
@@ -123,6 +125,7 @@ $result = $stmt->get_result();
                                 if ($userType === 'Admin') $typeBadgeClass = 'bg-danger';
                                 elseif ($userType === 'Faculty') $typeBadgeClass = 'bg-info text-dark';
                                 elseif ($userType === 'Student') $typeBadgeClass = 'bg-success';
+                                elseif ($userType === 'Stat-Dept') $typeBadgeClass = 'bg-warning text-dark';
                             ?>
                                 <tr>
                                     <td><strong><?= (int)$user["User_ID"] ?></strong></td>
@@ -130,6 +133,13 @@ $result = $stmt->get_result();
                                         <span class="badge <?= $typeBadgeClass ?>">
                                             <?= ($userType === "Admin") ? "Administrator" : htmlspecialchars($userType, ENT_QUOTES, 'UTF-8') ?>
                                         </span>
+                                    </td>
+                                    <td>
+                                        <?php if (!empty($user['IsLock'])): ?>
+                                            <span class="badge bg-danger">Locked</span>
+                                        <?php else: ?>
+                                            <span class="badge bg-success">Active</span>
+                                        <?php endif; ?>
                                     </td>
                                     <td class="fw-semibold">
                                         <?= htmlspecialchars(trim($user["User_FName"] . ' ' . ($user["User_MName"] ? $user["User_MName"] . ' ' : '') . $user["User_LName"]), ENT_QUOTES, 'UTF-8') ?>
