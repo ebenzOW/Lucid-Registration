@@ -460,9 +460,9 @@ BEGIN
             LIMIT 1;
 
             -- 9. Realistic Credits_Earned matching class standing
-            -- Freshmen: 0 - 28 credits (0 to 7 courses)
+            -- Freshmen: 0 credits (incoming Freshmen)
             IF v_year = 1 THEN
-                SET v_credits = FLOOR(RAND() * 8) * 4;
+                SET v_credits = 0;
             -- Sophomores: 32 - 56 credits (8 to 14 courses)
             ELSEIF v_year = 2 THEN
                 SET v_credits = (8 + FLOOR(RAND() * 7)) * 4;

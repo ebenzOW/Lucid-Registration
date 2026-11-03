@@ -820,7 +820,8 @@ BEGIN
                s.Dept_ID
         FROM STUDENT s
         LEFT JOIN FULL_TIME_UNDERGRADUATE ftu ON s.Student_ID = ftu.Student_ID
-        LEFT JOIN FULL_TIME_GRADUATE ftg ON s.Student_ID = ftg.Student_ID;
+        LEFT JOIN FULL_TIME_GRADUATE ftg ON s.Student_ID = ftg.Student_ID
+        ORDER BY s.Student_Year ASC, s.Student_ID ASC;
         
     DECLARE CONTINUE HANDLER FOR NOT FOUND SET v_done = TRUE;
 
@@ -881,7 +882,7 @@ BEGIN
                   SELECT 1 FROM ENROLLMENT e3 JOIN COURSE_SECTIONS cs3 ON e3.CRN = cs3.CRN 
                   WHERE e3.Student_ID = v_sid AND cs3.Time_Slot_ID = cs.Time_Slot_ID
               )
-            ORDER BY RAND()
+            ORDER BY (c.Course_ID IN (SELECT mr.Course_ID FROM STUDENT_MAJORS sm JOIN MAJOR_REQUIREMENTS mr ON sm.Major_ID = mr.Major_ID WHERE sm.Student_ID = v_sid)) DESC, cs.Available_seats DESC, RAND()
             LIMIT 1;
 
             -- Why: Reset v_done to FALSE because a NOT FOUND condition in SELECT INTO sets v_done=TRUE, which would otherwise abort student_loop.
@@ -899,6 +900,12 @@ BEGIN
 
     END LOOP student_loop;
     CLOSE cur_students;
+
+    UPDATE COURSE_SECTIONS cs
+    SET cs.Available_seats = GREATEST(0, 10 - (
+        SELECT COUNT(*) FROM ENROLLMENT e WHERE e.CRN = cs.CRN
+    ))
+    WHERE cs.Semester_ID IN (202608, 202701);
 
     COMMIT;
 END$$

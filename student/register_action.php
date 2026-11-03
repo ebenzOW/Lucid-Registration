@@ -10,23 +10,25 @@ require_once 'student_guard.php';
 $student_id = (int)$userID;
 
 // Validate Request Method
+$post_semester = filter_var($_POST['semester'] ?? null, FILTER_VALIDATE_INT) ?: 202701;
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     $_SESSION['flash_error'] = "Invalid request method.";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$post_semester);
     exit;
 }
 
 // Validate CRN input
 if (!isset($_POST['crn']) || empty($_POST['crn'])) {
     $_SESSION['flash_error'] = "Please select a course section to register.";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$post_semester);
     exit;
 }
 
 $crn = filter_var($_POST['crn'], FILTER_VALIDATE_INT);
 if ($crn === false || $crn <= 0) {
     $_SESSION['flash_error'] = "Invalid CRN provided.";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$post_semester);
     exit;
 }
 
@@ -435,7 +437,7 @@ try {
     $conn->commit();
 
     $_SESSION['flash_success'] = "Successfully registered for " . $course_id . " (CRN: " . $crn . ")!";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$semester_id);
     exit;
 
 } catch (Exception $e) {
@@ -443,6 +445,7 @@ try {
         $conn->rollback();
     }
     $_SESSION['flash_error'] = "Registration failed due to a system error: " . $e->getMessage();
-    header("Location: register.php");
+    $target_sem = isset($semester_id) ? $semester_id : (int)$post_semester;
+    header("Location: register.php?semester=" . (int)$target_sem);
     exit;
 }

@@ -32,13 +32,14 @@ $has_active_holds = !empty($holds);
 // 3. Fetch Semesters where course sections exist AND registration is not past Last_Day_Of_Registration
 $semStmt = $conn->prepare("
     SELECT DISTINCT s.Semester_ID, s.Semester_Name, s.Semester_Year,
+           s.Start_Date, s.End_Date,
            ir.Last_Day_Of_Registration, ir.Last_Day_Of_Dropping_Course,
            (CURRENT_DATE() <= ir.Last_Day_Of_Registration) AS is_reg_open,
            (CURRENT_DATE() <= ir.Last_Day_Of_Dropping_Course) AS is_drop_open
     FROM SEMESTER s
     JOIN INFORMATION_RELATION ir ON s.Semester_ID = ir.Semester_ID
     JOIN COURSE_SECTIONS cs ON s.Semester_ID = cs.Semester_ID
-    WHERE CURRENT_DATE() <= ir.Last_Day_Of_Registration
+    WHERE s.Semester_ID >= 202608
     ORDER BY s.Semester_ID ASC
 ");
 $semStmt->execute();
@@ -52,12 +53,16 @@ $semStmt->close();
 // Determine selected semester
 $selected_sem_id = isset($_GET['semester']) ? filter_var($_GET['semester'], FILTER_VALIDATE_INT) : null;
 if (!$selected_sem_id || !isset($availableSemesters[$selected_sem_id])) {
-    if (!empty($availableSemesters)) {
+    if (isset($availableSemesters[202608])) {
+        $selected_sem_id = 202608;
+    } elseif (isset($availableSemesters[202701])) {
+        $selected_sem_id = 202701;
+    } elseif (!empty($availableSemesters)) {
         // Default to the first open semester with existing sections
         $firstSem = reset($availableSemesters);
         $selected_sem_id = (int)$firstSem['Semester_ID'];
     } else {
-        $selected_sem_id = 202701;
+        $selected_sem_id = 202608;
     }
 }
 
@@ -117,7 +122,7 @@ unset($_SESSION['flash_error'], $_SESSION['flash_success']);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spring 2027 Registration | Lucid University</title>
+    <title><?= htmlspecialchars($semester_label, ENT_QUOTES, 'UTF-8') ?> Registration | Lucid University</title>
     <!-- Minimal Clean Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
@@ -194,6 +199,30 @@ unset($_SESSION['flash_error'], $_SESSION['flash_success']);
                 </ul>
             </div>
         <?php endif; ?>
+
+        <!-- Semester Switcher Bar -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body p-2 bg-white">
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <span class="fw-bold px-2 text-secondary small text-uppercase">Academic Semester:</span>
+                    <div class="nav nav-pills flex-grow-1">
+                        <?php foreach ($availableSemesters as $sId => $sData): 
+                            $isActive = ($selected_sem_id === $sId);
+                            $termName = htmlspecialchars($sData['Semester_Name'] . ' ' . $sData['Semester_Year'], ENT_QUOTES, 'UTF-8');
+                        ?>
+                            <a class="nav-link text-center flex-fill <?= $isActive ? 'active' : '' ?>" href="register.php?semester=<?= (int)$sId ?>">
+                                <strong><?= $termName ?></strong>
+                                <?php if ($sId === 202608): ?>
+                                    <span class="badge <?= $isActive ? 'text-bg-light' : 'bg-secondary' ?> ms-1">Fall Term</span>
+                                <?php elseif ($sId === 202701): ?>
+                                    <span class="badge <?= $isActive ? 'text-bg-light' : 'bg-primary' ?> ms-1">Spring Term</span>
+                                <?php endif; ?>
+                            </a>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Student Status & Credit Counter Dashboard -->
         <div class="card shadow-sm mb-4">
@@ -285,6 +314,7 @@ unset($_SESSION['flash_error'], $_SESSION['flash_success']);
                                             <!-- Plain HTML POST Form to drop_action.php -->
                                             <form method="POST" action="drop_action.php" class="d-inline">
                                                 <input type="hidden" name="crn" value="<?= (int)$sec['CRN'] ?>">
+                                                <input type="hidden" name="semester" value="<?= (int)$selected_sem_id ?>">
                                                 <button type="submit" class="btn btn-sm btn-outline-danger" <?= !$is_drop_open ? 'disabled' : '' ?>>
                                                     Drop
                                                 </button>
@@ -452,6 +482,7 @@ unset($_SESSION['flash_error'], $_SESSION['flash_success']);
                                                 <!-- Plain HTML POST Form to register_action.php -->
                                                 <form method="POST" action="register_action.php" class="d-inline">
                                                     <input type="hidden" name="crn" value="<?= $secCrn ?>">
+                                                    <input type="hidden" name="semester" value="<?= (int)$selected_sem_id ?>">
                                                     <button type="submit" class="btn btn-sm btn-primary">Register</button>
                                                 </form>
                                             <?php endif; ?>

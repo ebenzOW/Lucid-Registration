@@ -41,6 +41,12 @@ $adminNavHtml = getUserNavbarProfileHtml($conn, $admin_id, 'Admin');
                     <li class="nav-item">
                         <a class="nav-link" href="create_course_section.php">Create Course Section</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="manage_courses.php">Manage Courses</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="manage_holds.php">Manage Holds</a>
+                    </li>
                 </ul>
                 <div class="d-flex align-items-center gap-3">
                     <?= $adminNavHtml ?>
@@ -111,6 +117,32 @@ $adminNavHtml = getUserNavbarProfileHtml($conn, $admin_id, 'Admin');
                         </p>
                         <a href="create_course_section.php" class="btn btn-success btn-sm mt-2">
                             Create Section &rarr;
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <h5 class="fw-bold text-dark mb-2">Manage Courses &amp; Prerequisites</h5>
+                        <p class="text-secondary small flex-grow-1">
+                            Create, update, filter, and inspect curriculum course offerings, credit values, departments, and prerequisite rule dependencies.
+                        </p>
+                        <a href="manage_courses.php" class="btn btn-info btn-sm mt-2 text-dark fw-semibold">
+                            Manage Courses &rarr;
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <h5 class="fw-bold text-dark mb-2">Manage Student Holds</h5>
+                        <p class="text-secondary small flex-grow-1">
+                            Inspect active account holds, apply registration restrictions, and resolve student financial, academic, or disciplinary holds.
+                        </p>
+                        <a href="manage_holds.php" class="btn btn-warning btn-sm mt-2 text-dark fw-semibold">
+                            Manage Holds &rarr;
                         </a>
                     </div>
                 </div>

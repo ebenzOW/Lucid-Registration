@@ -120,6 +120,12 @@ $roomStmt->close();
                     <li class="nav-item">
                         <a class="nav-link active" aria-current="page" href="create_course_section.php">Create Course Section</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="manage_courses.php">Manage Courses</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="manage_holds.php">Manage Holds</a>
+                    </li>
                 </ul>
                 <div class="d-flex align-items-center gap-3">
                     <?= getUserNavbarProfileHtml($conn, $admin_id, 'Admin') ?>

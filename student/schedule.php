@@ -39,6 +39,7 @@ $semester_name = $semInfo ? ($semInfo['Semester_Name'] . ' ' . $semInfo['Semeste
 $is_current_term = ($selected_sem_id === 202608);
 $is_next_term    = ($selected_sem_id === 202701);
 $is_reg_open     = $semInfo ? (bool)$semInfo['is_reg_open'] : false;
+$is_drop_open    = $semInfo ? (bool)($semInfo['is_drop_open'] ?? false) : false;
 
 // 3. Fetch Enrolled Courses for the Selected Semester
 $scheduleData = getStudentScheduleBySemester($conn, $student_id, $selected_sem_id);
@@ -117,7 +118,7 @@ $course_count    = count($enrolledCourses);
                 <a href="master_schedule.php?semester=<?= $selected_sem_id ?>" class="btn btn-outline-secondary btn-sm">
                     Browse Master Schedule
                 </a>
-                <?php if ($is_next_term || $is_reg_open): ?>
+                <?php if ($is_next_term || $is_reg_open || $is_drop_open || $selected_sem_id >= 202608): ?>
                     <a href="register.php?semester=<?= $selected_sem_id ?>" class="btn btn-primary btn-sm">
                         Manage / Add-Drop Classes
                     </a>
@@ -277,7 +278,7 @@ $course_count    = count($enrolledCourses);
                     </div>
                 <?php endif; ?>
             </div>
-            <?php if (!empty($enrolledCourses) && ($is_next_term || $is_reg_open)): ?>
+            <?php if (!empty($enrolledCourses) && ($is_next_term || $is_reg_open || $is_drop_open || $selected_sem_id >= 202608)): ?>
                 <div class="card-footer bg-white d-flex justify-content-between align-items-center py-3">
                     <span class="text-muted small">Need to make adjustments to your upcoming schedule?</span>
                     <a href="register.php?semester=<?= $selected_sem_id ?>" class="btn btn-outline-primary btn-sm">

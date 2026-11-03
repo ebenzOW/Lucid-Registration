@@ -374,11 +374,12 @@ function getDegreeAuditData($conn, $student_id) {
     foreach ($majors as $m) {
         $mid = (int)$m['Major_ID'];
         $reqStmt = $conn->prepare("
-            SELECT mr.Course_ID, mr.Min_Grade, c.Course_Name, c.Course_Credits
+            SELECT mr.Course_ID, mr.Min_Grade, c.Course_Name, c.Course_Credits, c.Department_ID, d.Department_Name
             FROM MAJOR_REQUIREMENTS mr
             JOIN COURSES c ON mr.Course_ID = c.Course_ID
+            LEFT JOIN DEPARTMENT d ON c.Department_ID = d.Department_ID
             WHERE mr.Major_ID = ?
-            ORDER BY mr.Course_ID ASC
+            ORDER BY c.Department_ID ASC, mr.Course_ID ASC
         ");
         $reqStmt->bind_param("i", $mid);
         $reqStmt->execute();
@@ -398,11 +399,12 @@ function getDegreeAuditData($conn, $student_id) {
     foreach ($minors as $min) {
         $minId = (int)$min['Minor_ID'];
         $reqStmt = $conn->prepare("
-            SELECT mr.Course_ID, mr.Min_Grade, c.Course_Name, c.Course_Credits
+            SELECT mr.Course_ID, mr.Min_Grade, c.Course_Name, c.Course_Credits, c.Department_ID, d.Department_Name
             FROM MINOR_REQUIREMENTS mr
             JOIN COURSES c ON mr.Course_ID = c.Course_ID
+            LEFT JOIN DEPARTMENT d ON c.Department_ID = d.Department_ID
             WHERE mr.Minor_ID = ?
-            ORDER BY mr.Course_ID ASC
+            ORDER BY c.Department_ID ASC, mr.Course_ID ASC
         ");
         $reqStmt->bind_param("i", $minId);
         $reqStmt->execute();

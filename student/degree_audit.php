@@ -128,6 +128,7 @@ $progressPct = ($creditsRequired > 0) ? min(100, round(($total_credits_earned / 
                             <tr>
                                 <th>Course ID</th>
                                 <th>Course Name</th>
+                                <th>Department</th>
                                 <th class="text-center">Credits</th>
                                 <th class="text-center">Min. Grade</th>
                                 <th class="text-center">Status</th>
@@ -138,6 +139,7 @@ $progressPct = ($creditsRequired > 0) ? min(100, round(($total_credits_earned / 
                                 <tr>
                                     <td><?= htmlspecialchars($req['Course_ID'], ENT_QUOTES, 'UTF-8') ?></td>
                                     <td><?= htmlspecialchars($req['Course_Name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td><small class="text-muted"><?= htmlspecialchars($req['Department_Name'] ?? 'General', ENT_QUOTES, 'UTF-8') ?></small></td>
                                     <td class="text-center"><?= (int)$req['Course_Credits'] ?></td>
                                     <td class="text-center"><?= htmlspecialchars($req['Min_Grade'], ENT_QUOTES, 'UTF-8') ?></td>
                                     <td class="text-center">
@@ -168,6 +170,7 @@ $progressPct = ($creditsRequired > 0) ? min(100, round(($total_credits_earned / 
                                 <tr>
                                     <th>Course ID</th>
                                     <th>Course Name</th>
+                                    <th>Department</th>
                                     <th class="text-center">Credits</th>
                                     <th class="text-center">Min. Grade</th>
                                     <th class="text-center">Status</th>
@@ -178,6 +181,7 @@ $progressPct = ($creditsRequired > 0) ? min(100, round(($total_credits_earned / 
                                     <tr>
                                         <td><?= htmlspecialchars($req['Course_ID'], ENT_QUOTES, 'UTF-8') ?></td>
                                         <td><?= htmlspecialchars($req['Course_Name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><small class="text-muted"><?= htmlspecialchars($req['Department_Name'] ?? 'General', ENT_QUOTES, 'UTF-8') ?></small></td>
                                         <td class="text-center"><?= (int)$req['Course_Credits'] ?></td>
                                         <td class="text-center"><?= htmlspecialchars($req['Min_Grade'], ENT_QUOTES, 'UTF-8') ?></td>
                                         <td class="text-center">
@@ -209,6 +213,7 @@ $progressPct = ($creditsRequired > 0) ? min(100, round(($total_credits_earned / 
                                 <tr>
                                     <th>Course ID</th>
                                     <th>Course Name</th>
+                                    <th>Department</th>
                                     <th class="text-center">Credits</th>
                                     <th class="text-center">Min. Grade</th>
                                     <th class="text-center">Status</th>
@@ -219,6 +224,7 @@ $progressPct = ($creditsRequired > 0) ? min(100, round(($total_credits_earned / 
                                     <tr>
                                         <td><?= htmlspecialchars($req['Course_ID'], ENT_QUOTES, 'UTF-8') ?></td>
                                         <td><?= htmlspecialchars($req['Course_Name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><small class="text-muted"><?= htmlspecialchars($req['Department_Name'] ?? 'General', ENT_QUOTES, 'UTF-8') ?></small></td>
                                         <td class="text-center"><?= (int)$req['Course_Credits'] ?></td>
                                         <td class="text-center"><?= htmlspecialchars($req['Min_Grade'], ENT_QUOTES, 'UTF-8') ?></td>
                                         <td class="text-center">

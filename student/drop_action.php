@@ -2,19 +2,23 @@
 require_once 'student_guard.php';
 $student_id = (int)$userID;
 
+$post_semester = filter_var($_POST['semester'] ?? null, FILTER_VALIDATE_INT) ?: 202608;
+
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$post_semester);
     exit;
 }
 
 $crn = filter_var($_POST['crn'] ?? null, FILTER_VALIDATE_INT);
 if (!$crn || $crn <= 0) {
     $_SESSION['flash_error'] = "Invalid CRN provided.";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$post_semester);
     exit;
 }
 
 require_once '../db_connect.php';
+
+$semester_id = $post_semester;
 
 try {
     $conn->begin_transaction();
@@ -79,5 +83,6 @@ try {
     $_SESSION['flash_error'] = $e->getMessage();
 }
 
-header("Location: register.php");
+$redirect_semester = $semester_id ?: $post_semester;
+header("Location: register.php?semester=" . (int)$redirect_semester);
 exit;
