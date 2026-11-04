@@ -47,6 +47,9 @@ $adminNavHtml = getUserNavbarProfileHtml($conn, $admin_id, 'Admin');
                     <li class="nav-item">
                         <a class="nav-link" href="manage_holds.php">Manage Holds</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="manage_facilities.php">Manage Facilities</a>
+                    </li>
                 </ul>
                 <div class="d-flex align-items-center gap-3">
                     <?= $adminNavHtml ?>
@@ -143,6 +146,19 @@ $adminNavHtml = getUserNavbarProfileHtml($conn, $admin_id, 'Admin');
                         </p>
                         <a href="manage_holds.php" class="btn btn-warning btn-sm mt-2 text-dark fw-semibold">
                             Manage Holds &rarr;
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <h5 class="fw-bold text-dark mb-2">Manage Campus Facilities</h5>
+                        <p class="text-secondary small flex-grow-1">
+                            View, create, and edit buildings, rooms, labs, offices, and lecture spaces with availability checks.
+                        </p>
+                        <a href="manage_facilities.php" class="btn btn-outline-primary btn-sm mt-2">
+                            Manage Facilities &rarr;
                         </a>
                     </div>
                 </div>
