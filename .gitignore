@@ -11,6 +11,8 @@ notes.txt
 TODO.txt    
 *.ps1
 *.md
+
+.devcontainer/
 # =========================
 # Dependencies & Libraries
 # =========================
