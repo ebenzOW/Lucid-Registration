@@ -43,4 +43,4 @@ if (!function_exists('requireAdminWriteAccess')) {
         }
     }
 }
-?>
+

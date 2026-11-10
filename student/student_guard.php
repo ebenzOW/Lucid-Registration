@@ -10,4 +10,4 @@ if (!($_SESSION["User_Type"] === "Student")) {
     exit;
 }
 $userID = $_SESSION["User_ID"];
-?>
+

@@ -2,315 +2,369 @@
 /**
  * Lucid University Course Registration System
  * Admin Campus Facilities Management — Request Processor
+ *
+ * Handles creation and modification of campus buildings and rooms with:
+ * - Transactional integrity (SELECT ... FOR UPDATE)
+ * - Security level enforcement (Security Level >= 2 required for write access)
+ * - Subtype synchronization (OFFICE, LAB, LECTURE)
+ * - Foreign key and capacity validation
+ * - Standard Post-Redirect-Get pattern with session flash alerts
  */
 
-// The supplied admin guard ends with a closing PHP tag; buffer its whitespace
-// so that AJAX responses remain clean JSON and headers can be set safely.
-ob_start();
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
-ob_clean();
 
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
-    header('Content-Type: application/json; charset=utf-8');
-    header('Cache-Control: no-store');
-    http_response_code(405);
-    echo json_encode(['ok' => false, 'message' => 'Only POST requests are accepted.']);
+if ($_SERVER["REQUEST_METHOD"] !== "POST") {
+    header("Location: manage_facilities.php");
     exit;
 }
 
-function facilitiesLength(string $value): int {
-    return function_exists('mb_strlen') ? mb_strlen($value, 'UTF-8') : strlen($value);
-}
+$action = trim($_POST['action'] ?? '');
 
-/** Validate and normalize the fields actually defined in the supplied schema. */
-function facilitiesValidate(array $input): array {
-    $entity = trim((string)($input['entity'] ?? ''));
-    $operation = trim((string)($input['operation'] ?? ''));
-    if (!in_array($entity, ['building', 'room'], true) || !in_array($operation, ['create', 'update'], true)) {
-        throw new InvalidArgumentException('Invalid facility operation.');
-    }
+try {
+    // 1. Enforce admin write permission (Security Level >= 2)
+    requireAdminWriteAccess();
 
-    if ($entity === 'building') {
-        $id = trim((string)($input['building_id'] ?? ''));
-        $name = trim((string)($input['building_name'] ?? ''));
-        $purpose = trim((string)($input['usage_purpose'] ?? ''));
-        if ($id === '' || facilitiesLength($id) > 10) {
-            throw new InvalidArgumentException('A building ID of 1–10 characters is required.');
+    if ($action === 'create_building') {
+        $building_id    = strtoupper(trim($_POST['building_id'] ?? ''));
+        $building_name  = trim($_POST['building_name'] ?? '');
+        $usage_purpose  = trim($_POST['usage_purpose'] ?? '');
+
+        if ($building_id === '' || strlen($building_id) > 10 || !preg_match('/^[A-Z0-9\-]+$/', $building_id)) {
+            throw new Exception("Building ID must be 1 to 10 alphanumeric characters or hyphens.");
         }
-        if ($name === '' || facilitiesLength($name) > 100) {
-            throw new InvalidArgumentException('A building name of 1–100 characters is required.');
+        if ($building_name === '' || strlen($building_name) > 100) {
+            throw new Exception("Building Name is required and must not exceed 100 characters.");
         }
-        if (facilitiesLength($purpose) > 100) {
-            throw new InvalidArgumentException('Building usage purpose must not exceed 100 characters.');
+        if (strlen($usage_purpose) > 100) {
+            throw new Exception("Usage Purpose must not exceed 100 characters.");
         }
-        return [
-            'entity' => 'building', 'operation' => $operation,
-            'building_id' => $id, 'building_name' => $name,
-            'usage_purpose' => $purpose,
-        ];
-    }
 
-    $id = trim((string)($input['room_id'] ?? ''));
-    $buildingId = trim((string)($input['room_building_id'] ?? ''));
-    $number = trim((string)($input['room_no'] ?? ''));
-    $type = trim((string)($input['room_type'] ?? ''));
-    $capacityRaw = trim((string)($input['capacity'] ?? ''));
-    if ($id === '' || facilitiesLength($id) > 15) {
-        throw new InvalidArgumentException('A room ID of 1–15 characters is required.');
-    }
-    if ($buildingId === '' || facilitiesLength($buildingId) > 10) {
-        throw new InvalidArgumentException('Select an existing building.');
-    }
-    if ($number === '' || facilitiesLength($number) > 10) {
-        throw new InvalidArgumentException('A room number of 1–10 characters is required.');
-    }
-    if (!in_array($type, ['Lecture', 'Lab', 'Office'], true)) {
-        throw new InvalidArgumentException('Room type must be Lecture, Lab, or Office.');
-    }
-    if (!preg_match('/^[0-9]+$/D', $capacityRaw)) {
-        throw new InvalidArgumentException('Enter a positive whole number for desks, stations, or seats.');
-    }
-    $capacity = filter_var($capacityRaw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 2147483647]]);
-    if ($capacity === false) {
-        throw new InvalidArgumentException('Capacity must be a positive whole number.');
-    }
-    return [
-        'entity' => 'room', 'operation' => $operation,
-        'room_id' => $id, 'room_building_id' => $buildingId,
-        'room_no' => $number, 'room_type' => $type, 'capacity' => $capacity,
-    ];
-}
+        $conn->begin_transaction();
 
-/**
- * Availability here means the building ID or room ID/number is not in use.
- * It is not a course time-slot availability check.
- */
-function facilitiesAvailability(mysqli $conn, array $facility): array {
-    if ($facility['entity'] === 'building') {
-        $stmt = $conn->prepare('SELECT Building_ID FROM BUILDING WHERE Building_ID = ? LIMIT 1');
-        $stmt->bind_param('s', $facility['building_id']);
-        $stmt->execute();
-        $exists = $stmt->get_result()->fetch_assoc() !== null;
-        $stmt->close();
-        if ($facility['operation'] === 'create' && $exists) {
-            return [false, 'That building ID is already in use.'];
+        // Check duplicate Building ID
+        $checkStmt = $conn->prepare("SELECT 1 FROM BUILDING WHERE Building_ID = ? FOR UPDATE");
+        $checkStmt->bind_param("s", $building_id);
+        $checkStmt->execute();
+        if ($checkStmt->get_result()->num_rows > 0) {
+            $checkStmt->close();
+            throw new Exception("A building with ID '{$building_id}' already exists.");
         }
-        if ($facility['operation'] === 'update' && !$exists) {
-            return [false, 'This building no longer exists. Refresh the page.'];
+        $checkStmt->close();
+
+        $insStmt = $conn->prepare("INSERT INTO BUILDING (Building_ID, Building_Name, Usage_Purpose) VALUES (?, ?, ?)");
+        $insStmt->bind_param("sss", $building_id, $building_name, $usage_purpose);
+        if (!$insStmt->execute()) {
+            throw new Exception("Failed to create building: " . $insStmt->error);
         }
-        return [true, $facility['operation'] === 'create' ? 'Building ID is available.' : 'Building is available to update.'];
-    }
+        $insStmt->close();
 
-    $stmt = $conn->prepare('SELECT Building_ID FROM BUILDING WHERE Building_ID = ? LIMIT 1');
-    $stmt->bind_param('s', $facility['room_building_id']);
-    $stmt->execute();
-    $buildingExists = $stmt->get_result()->fetch_assoc() !== null;
-    $stmt->close();
-    if (!$buildingExists) {
-        return [false, 'The selected building does not exist.'];
-    }
+        $conn->commit();
 
-    $stmt = $conn->prepare('SELECT Room_ID FROM ROOM WHERE Room_ID = ? LIMIT 1');
-    $stmt->bind_param('s', $facility['room_id']);
-    $stmt->execute();
-    $roomExists = $stmt->get_result()->fetch_assoc() !== null;
-    $stmt->close();
-    if ($facility['operation'] === 'create' && $roomExists) {
-        return [false, 'That room ID is already in use.'];
-    }
-    if ($facility['operation'] === 'update' && !$roomExists) {
-        return [false, 'This room no longer exists. Refresh the page.'];
-    }
+        $_SESSION['success_message'] = "Building '{$building_name}' ({$building_id}) was successfully created!";
+        header("Location: manage_facilities.php");
+        exit;
 
-    // Different rooms in the same building are allowed. Only a repeated room
-    // number *within that same building* is rejected.
-    $stmt = $conn->prepare(
-        'SELECT Room_ID FROM ROOM WHERE Building_ID = ? AND Room_NO = ? AND Room_ID <> ? LIMIT 1'
-    );
-    $stmt->bind_param('sss', $facility['room_building_id'], $facility['room_no'], $facility['room_id']);
-    $stmt->execute();
-    $duplicate = $stmt->get_result()->fetch_assoc() !== null;
-    $stmt->close();
-    if ($duplicate) {
-        return [false, 'Room number ' . $facility['room_no'] . ' is already used in this building.'];
-    }
-    return [true, 'Room ID and room number are available in this building.'];
-}
+    } elseif ($action === 'update_building') {
+        $building_id    = strtoupper(trim($_POST['building_id'] ?? ''));
+        $building_name  = trim($_POST['building_name'] ?? '');
+        $usage_purpose  = trim($_POST['usage_purpose'] ?? '');
 
-/** The successful check is signed and bound to the exact normalized form fields. */
-function facilitiesMakeTicket(array $facility): string {
-    $issued = time();
-    $payload = $issued . '.' . json_encode($facility, JSON_UNESCAPED_UNICODE);
-    $signature = hash_hmac('sha256', $payload, $_SESSION['facilities_check_secret']);
-    return $issued . '.' . $signature;
-}
-
-function facilitiesTicketValid(string $ticket, array $facility): bool {
-    if (!preg_match('/^([0-9]{10})\.([a-f0-9]{64})$/D', $ticket, $matches)) {
-        return false;
-    }
-    $issued = (int)$matches[1];
-    if ($issued > time() || time() - $issued > 600) {
-        return false;
-    }
-    $payload = $issued . '.' . json_encode($facility, JSON_UNESCAPED_UNICODE);
-    $expected = hash_hmac('sha256', $payload, $_SESSION['facilities_check_secret']);
-    return hash_equals($expected, $matches[2]);
-}
-
-// Handle availability checks and saves for the facilities management page.
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
-    header('Content-Type: application/json; charset=utf-8');
-    header('Cache-Control: no-store');
-    $lockHeld = false;
-    $transactionStarted = false;
-    try {
-        if (empty($_SESSION['facilities_csrf']) || empty($_SESSION['facilities_check_secret']) ||
-            !hash_equals($_SESSION['facilities_csrf'], (string)($_POST['csrf'] ?? ''))) {
-            throw new RuntimeException('Your session expired. Refresh the page and try again.');
+        if ($building_id === '') {
+            throw new Exception("Building ID is required for update.");
         }
-        // Level 1 is highest authority. The shared admin_guard helper currently
-        // uses the reverse policy, so enforce facility permissions here.
-        // Levels 2–4 remain read-only and cannot call check/save directly.
-        if ((int)($_SESSION['Security_Level'] ?? 4) !== 1) {
-            throw new RuntimeException('Security Level 1 administrator access is required to create or edit facilities.');
+        if ($building_name === '' || strlen($building_name) > 100) {
+            throw new Exception("Building Name is required and must not exceed 100 characters.");
         }
-        $action = (string)($_POST['action'] ?? '');
-        if (!in_array($action, ['check', 'save'], true)) {
-            throw new InvalidArgumentException('Invalid action.');
+        if (strlen($usage_purpose) > 100) {
+            throw new Exception("Usage Purpose must not exceed 100 characters.");
         }
-        $facility = facilitiesValidate($_POST);
 
-        if ($action === 'check') {
-            [$available, $message] = facilitiesAvailability($conn, $facility);
-            echo json_encode([
-                'ok' => true, 'available' => $available, 'message' => $message,
-                'ticket' => $available ? facilitiesMakeTicket($facility) : null,
-            ]);
-        } else {
-            if (!facilitiesTicketValid((string)($_POST['ticket'] ?? ''), $facility)) {
-                throw new RuntimeException('Check availability for these exact details before submitting.');
+        $conn->begin_transaction();
+
+        $checkStmt = $conn->prepare("SELECT 1 FROM BUILDING WHERE Building_ID = ? FOR UPDATE");
+        $checkStmt->bind_param("s", $building_id);
+        $checkStmt->execute();
+        if ($checkStmt->get_result()->num_rows === 0) {
+            $checkStmt->close();
+            throw new Exception("Building '{$building_id}' does not exist.");
+        }
+        $checkStmt->close();
+
+        $updStmt = $conn->prepare("UPDATE BUILDING SET Building_Name = ?, Usage_Purpose = ? WHERE Building_ID = ?");
+        $updStmt->bind_param("sss", $building_name, $usage_purpose, $building_id);
+        if (!$updStmt->execute()) {
+            throw new Exception("Failed to update building: " . $updStmt->error);
+        }
+        $updStmt->close();
+
+        $conn->commit();
+
+        $_SESSION['success_message'] = "Building '{$building_id}' was successfully updated!";
+        header("Location: manage_facilities.php");
+        exit;
+
+    } elseif ($action === 'create_room') {
+        $room_id     = strtoupper(trim($_POST['room_id'] ?? ''));
+        $building_id = strtoupper(trim($_POST['building_id'] ?? ''));
+        $room_no     = trim($_POST['room_no'] ?? '');
+        $room_type   = ucfirst(strtolower(trim($_POST['room_type'] ?? '')));
+        $capacity    = (int)($_POST['capacity'] ?? 0);
+
+        if ($room_id === '' || strlen($room_id) > 15 || !preg_match('/^[A-Z0-9\-]+$/', $room_id)) {
+            throw new Exception("Room ID must be 1 to 15 alphanumeric characters or hyphens.");
+        }
+        if ($building_id === '') {
+            throw new Exception("Please select a valid building.");
+        }
+        if ($room_no === '' || strlen($room_no) > 10) {
+            throw new Exception("Room Number must be 1 to 10 characters.");
+        }
+        if (!in_array($room_type, ['Lecture', 'Lab', 'Office'], true)) {
+            throw new Exception("Room Type must be Lecture, Lab, or Office.");
+        }
+        if ($capacity < 1) {
+            throw new Exception("Room capacity must be at least 1.");
+        }
+
+        $conn->begin_transaction();
+
+        // Verify Building exists
+        $bStmt = $conn->prepare("SELECT 1 FROM BUILDING WHERE Building_ID = ? FOR UPDATE");
+        $bStmt->bind_param("s", $building_id);
+        $bStmt->execute();
+        if ($bStmt->get_result()->num_rows === 0) {
+            $bStmt->close();
+            throw new Exception("The selected building '{$building_id}' does not exist.");
+        }
+        $bStmt->close();
+
+        // Check duplicate Room_ID
+        $rCheck = $conn->prepare("SELECT 1 FROM ROOM WHERE Room_ID = ? FOR UPDATE");
+        $rCheck->bind_param("s", $room_id);
+        $rCheck->execute();
+        if ($rCheck->get_result()->num_rows > 0) {
+            $rCheck->close();
+            throw new Exception("A room with ID '{$room_id}' already exists.");
+        }
+        $rCheck->close();
+
+        // Check duplicate (Building_ID, Room_NO)
+        $noCheck = $conn->prepare("SELECT 1 FROM ROOM WHERE Building_ID = ? AND Room_NO = ? FOR UPDATE");
+        $noCheck->bind_param("ss", $building_id, $room_no);
+        $noCheck->execute();
+        if ($noCheck->get_result()->num_rows > 0) {
+            $noCheck->close();
+            throw new Exception("Room number '{$room_no}' already exists in building '{$building_id}'.");
+        }
+        $noCheck->close();
+
+        // Insert into ROOM
+        $insRoom = $conn->prepare("INSERT INTO ROOM (Room_ID, Building_ID, Room_NO, Room_Type) VALUES (?, ?, ?, ?)");
+        $insRoom->bind_param("ssss", $room_id, $building_id, $room_no, $room_type);
+        if (!$insRoom->execute()) {
+            throw new Exception("Failed to insert room record: " . $insRoom->error);
+        }
+        $insRoom->close();
+
+        // Insert into Subtype table
+        if ($room_type === 'Lecture') {
+            $subStmt = $conn->prepare("INSERT INTO LECTURE (Lecture_ID, Lecture_Seats) VALUES (?, ?)");
+            $subStmt->bind_param("si", $room_id, $capacity);
+            $subStmt->execute();
+            $subStmt->close();
+        } elseif ($room_type === 'Lab') {
+            $subStmt = $conn->prepare("INSERT INTO LAB (Lab_ID, Lab_Stations) VALUES (?, ?)");
+            $subStmt->bind_param("si", $room_id, $capacity);
+            $subStmt->execute();
+            $subStmt->close();
+        } elseif ($room_type === 'Office') {
+            $subStmt = $conn->prepare("INSERT INTO OFFICE (Office_ID, Office_Desks) VALUES (?, ?)");
+            $subStmt->bind_param("si", $room_id, $capacity);
+            $subStmt->execute();
+            $subStmt->close();
+        }
+
+        $conn->commit();
+
+        $_SESSION['success_message'] = "Room '{$room_id}' ({$room_type}, capacity: {$capacity}) was successfully added to building '{$building_id}'!";
+        header("Location: manage_facilities.php");
+        exit;
+
+    } elseif ($action === 'update_room') {
+        $room_id     = strtoupper(trim($_POST['room_id'] ?? ''));
+        $building_id = strtoupper(trim($_POST['building_id'] ?? ''));
+        $room_no     = trim($_POST['room_no'] ?? '');
+        $room_type   = ucfirst(strtolower(trim($_POST['room_type'] ?? '')));
+        $capacity    = (int)($_POST['capacity'] ?? 0);
+
+        if ($room_id === '') {
+            throw new Exception("Room ID is required for update.");
+        }
+        if ($building_id === '') {
+            throw new Exception("Please select a valid building.");
+        }
+        if ($room_no === '' || strlen($room_no) > 10) {
+            throw new Exception("Room Number must be 1 to 10 characters.");
+        }
+        if (!in_array($room_type, ['Lecture', 'Lab', 'Office'], true)) {
+            throw new Exception("Room Type must be Lecture, Lab, or Office.");
+        }
+        if ($capacity < 1) {
+            throw new Exception("Room capacity must be at least 1.");
+        }
+
+        $conn->begin_transaction();
+
+        // Lock existing Room row
+        $rStmt = $conn->prepare("SELECT Room_Type, Building_ID, Room_NO FROM ROOM WHERE Room_ID = ? FOR UPDATE");
+        $rStmt->bind_param("s", $room_id);
+        $rStmt->execute();
+        $oldRoom = $rStmt->get_result()->fetch_assoc();
+        $rStmt->close();
+
+        if (!$oldRoom) {
+            throw new Exception("Room '{$room_id}' does not exist.");
+        }
+
+        $oldType = ucfirst(strtolower((string)$oldRoom['Room_Type']));
+
+        // Verify target Building exists
+        $bStmt = $conn->prepare("SELECT 1 FROM BUILDING WHERE Building_ID = ? FOR UPDATE");
+        $bStmt->bind_param("s", $building_id);
+        $bStmt->execute();
+        if ($bStmt->get_result()->num_rows === 0) {
+            $bStmt->close();
+            throw new Exception("Building '{$building_id}' does not exist.");
+        }
+        $bStmt->close();
+
+        // Enforce uniqueness of (Building_ID, Room_NO) across different Room_IDs
+        $dupCheck = $conn->prepare("SELECT 1 FROM ROOM WHERE Building_ID = ? AND Room_NO = ? AND Room_ID != ? FOR UPDATE");
+        $dupCheck->bind_param("sss", $building_id, $room_no, $room_id);
+        $dupCheck->execute();
+        if ($dupCheck->get_result()->num_rows > 0) {
+            $dupCheck->close();
+            throw new Exception("Room number '{$room_no}' is already in use in building '{$building_id}'.");
+        }
+        $dupCheck->close();
+
+        // Validate type transitions against foreign key constraints
+        if ($oldType === 'Office' && in_array($room_type, ['Lecture', 'Lab'], true)) {
+            // Verify FACULTY (Office_ID) and DEPARTMENT (Office_ID) have 0 references
+            $facCheck = $conn->prepare("SELECT COUNT(*) AS Cnt FROM FACULTY WHERE Office_ID = ?");
+            $facCheck->bind_param("s", $room_id);
+            $facCheck->execute();
+            $facCnt = (int)($facCheck->get_result()->fetch_assoc()['Cnt'] ?? 0);
+            $facCheck->close();
+
+            $deptCheck = $conn->prepare("SELECT COUNT(*) AS Cnt FROM DEPARTMENT WHERE Office_ID = ?");
+            $deptCheck->bind_param("s", $room_id);
+            $deptCheck->execute();
+            $deptCnt = (int)($deptCheck->get_result()->fetch_assoc()['Cnt'] ?? 0);
+            $deptCheck->close();
+
+            if ($facCnt > 0 || $deptCnt > 0) {
+                throw new Exception("Cannot convert Office '{$room_id}' to an instructional classroom/lab: it is currently assigned as an office to {$facCnt} faculty member(s) and {$deptCnt} department(s).");
             }
+        } elseif (in_array($oldType, ['Lecture', 'Lab'], true) && $room_type === 'Office') {
+            // Verify COURSE_SECTIONS (Room_ID) has 0 references
+            $secCheck = $conn->prepare("SELECT COUNT(*) AS Cnt FROM COURSE_SECTIONS WHERE Room_ID = ?");
+            $secCheck->bind_param("s", $room_id);
+            $secCheck->execute();
+            $secCnt = (int)($secCheck->get_result()->fetch_assoc()['Cnt'] ?? 0);
+            $secCheck->close();
 
-            // Serializes concurrent facility saves made through this page without
-            // requiring any database migration or new UNIQUE index.
-            $lockResult = $conn->query("SELECT GET_LOCK('lucid_facilities_manage_save', 10) AS obtained")->fetch_assoc();
-            if ((int)($lockResult['obtained'] ?? 0) !== 1) {
-                throw new RuntimeException('Facilities are being updated. Try submitting again.');
+            if ($secCnt > 0) {
+                throw new Exception("Cannot convert room '{$room_id}' to an Office: {$secCnt} course section(s) are currently scheduled in this room.");
             }
-            $lockHeld = true;
-            $conn->begin_transaction();
-            $transactionStarted = true;
+        }
 
-            // Always re-check at submission because records can change after a check.
-            [$available, $message] = facilitiesAvailability($conn, $facility);
-            if (!$available) {
-                throw new RuntimeException($message . ' Check availability again.');
+        // Capacity check for Lecture / Lab
+        if (in_array($room_type, ['Lecture', 'Lab'], true)) {
+            $maxCheck = $conn->prepare("SELECT MAX(Available_seats) AS Max_Seats FROM COURSE_SECTIONS WHERE Room_ID = ?");
+            $maxCheck->bind_param("s", $room_id);
+            $maxCheck->execute();
+            $maxRow = $maxCheck->get_result()->fetch_assoc();
+            $maxCheck->close();
+            $maxSeats = isset($maxRow['Max_Seats']) ? (int)$maxRow['Max_Seats'] : 0;
+
+            if ($maxSeats > 0 && $capacity < $maxSeats) {
+                throw new Exception("Specified capacity ({$capacity}) cannot be less than the maximum seats configured for scheduled course sections in this room ({$maxSeats}).");
             }
-
-            if ($facility['entity'] === 'building') {
-                if ($facility['operation'] === 'create') {
-                    $stmt = $conn->prepare('INSERT INTO BUILDING (Building_ID, Building_Name, Usage_Purpose) VALUES (?, ?, ?)');
-                    $stmt->bind_param('sss', $facility['building_id'], $facility['building_name'], $facility['usage_purpose']);
-                } else {
-                    $stmt = $conn->prepare('UPDATE BUILDING SET Building_Name = ?, Usage_Purpose = ? WHERE Building_ID = ?');
-                    $stmt->bind_param('sss', $facility['building_name'], $facility['usage_purpose'], $facility['building_id']);
-                }
-                $stmt->execute();
-                $stmt->close();
-            } else {
-                $roomId = $facility['room_id'];
-                $type = $facility['room_type'];
-                $capacity = $facility['capacity'];
-                $oldType = null;
-                if ($facility['operation'] === 'create') {
-                    $stmt = $conn->prepare('INSERT INTO ROOM (Room_ID, Building_ID, Room_NO, Room_Type) VALUES (?, ?, ?, ?)');
-                    $stmt->bind_param('ssss', $roomId, $facility['room_building_id'], $facility['room_no'], $type);
-                    $stmt->execute();
-                    $stmt->close();
-                } else {
-                    $stmt = $conn->prepare('SELECT Room_Type FROM ROOM WHERE Room_ID = ? FOR UPDATE');
-                    $stmt->bind_param('s', $roomId);
-                    $stmt->execute();
-                    $previous = $stmt->get_result()->fetch_assoc();
-                    $stmt->close();
-                    if (!$previous) {
-                        throw new RuntimeException('This room was removed. Refresh the page.');
-                    }
-                    $oldType = ucfirst(strtolower((string)$previous['Room_Type']));
-
-                    // OFFICE is referenced by FACULTY and DEPARTMENT. Prevent
-                    // changing its type from silently clearing those assignments.
-                    if ($oldType === 'Office' && $type !== 'Office') {
-                        $stmt = $conn->prepare('SELECT COUNT(*) AS n FROM FACULTY WHERE Office_ID = ?');
-                        $stmt->bind_param('s', $roomId);
-                        $stmt->execute();
-                        $facultyUses = (int)$stmt->get_result()->fetch_assoc()['n'];
-                        $stmt->close();
-                        $stmt = $conn->prepare('SELECT COUNT(*) AS n FROM DEPARTMENT WHERE Office_ID = ?');
-                        $stmt->bind_param('s', $roomId);
-                        $stmt->execute();
-                        $departmentUses = (int)$stmt->get_result()->fetch_assoc()['n'];
-                        $stmt->close();
-                        if ($facultyUses + $departmentUses > 0) {
-                            throw new RuntimeException('This office is assigned to faculty or a department. Reassign it before changing the room type.');
-                        }
-                    }
-                    $stmt = $conn->prepare('UPDATE ROOM SET Building_ID = ?, Room_NO = ?, Room_Type = ? WHERE Room_ID = ?');
-                    $stmt->bind_param('ssss', $facility['room_building_id'], $facility['room_no'], $type, $roomId);
-                    $stmt->execute();
-                    $stmt->close();
-                }
-
-                // ROOM is the parent record. Its type-specific child must be
-                // synchronized in the matching table in the same transaction.
-                $subtypes = [
-                    'Office' => ['OFFICE', 'Office_ID', 'Office_Desks'],
-                    'Lab' => ['LAB', 'Lab_ID', 'Lab_Stations'],
-                    'Lecture' => ['LECTURE', 'Lecture_ID', 'Lecture_Seats'],
-                ];
-                foreach ($subtypes as $subtype => [$table, $idColumn, $capacityColumn]) {
-                    if ($subtype === $type) {
-                        $stmt = $conn->prepare(
-                            "INSERT INTO {$table} ({$idColumn}, {$capacityColumn}) VALUES (?, ?) " .
-                            "ON DUPLICATE KEY UPDATE {$capacityColumn} = VALUES({$capacityColumn})"
-                        );
-                        $stmt->bind_param('si', $roomId, $capacity);
-                    } else {
-                        $stmt = $conn->prepare("DELETE FROM {$table} WHERE {$idColumn} = ?");
-                        $stmt->bind_param('s', $roomId);
-                    }
-                    $stmt->execute();
-                    $stmt->close();
-                }
-            }
-
-            $conn->commit();
-            $transactionStarted = false;
-            $_SESSION['success_message'] = ($facility['entity'] === 'building' ? 'Building' : 'Room') .
-                ($facility['operation'] === 'create' ? ' created successfully.' : ' updated successfully.');
-            echo json_encode(['ok' => true, 'saved' => true]);
         }
-    } catch (Throwable $error) {
-        if ($transactionStarted) {
-            $conn->rollback();
+
+        // Update ROOM table
+        $updRoom = $conn->prepare("UPDATE ROOM SET Building_ID = ?, Room_NO = ?, Room_Type = ? WHERE Room_ID = ?");
+        $updRoom->bind_param("ssss", $building_id, $room_no, $room_type, $room_id);
+        if (!$updRoom->execute()) {
+            throw new Exception("Failed to update room: " . $updRoom->error);
         }
-        $isDbError = $error instanceof mysqli_sql_exception;
-        if ($isDbError) {
-            error_log('manage_facilities_process.php SQL error: ' . $error->getMessage());
+        $updRoom->close();
+
+        // Synchronize subtype tables
+        if ($room_type === 'Lecture') {
+            $lecStmt = $conn->prepare("INSERT INTO LECTURE (Lecture_ID, Lecture_Seats) VALUES (?, ?) ON DUPLICATE KEY UPDATE Lecture_Seats = VALUES(Lecture_Seats)");
+            $lecStmt->bind_param("si", $room_id, $capacity);
+            $lecStmt->execute();
+            $lecStmt->close();
+
+            $delLab = $conn->prepare("DELETE FROM LAB WHERE Lab_ID = ?");
+            $delLab->bind_param("s", $room_id);
+            $delLab->execute();
+            $delLab->close();
+
+            $delOff = $conn->prepare("DELETE FROM OFFICE WHERE Office_ID = ?");
+            $delOff->bind_param("s", $room_id);
+            $delOff->execute();
+            $delOff->close();
+        } elseif ($room_type === 'Lab') {
+            $labStmt = $conn->prepare("INSERT INTO LAB (Lab_ID, Lab_Stations) VALUES (?, ?) ON DUPLICATE KEY UPDATE Lab_Stations = VALUES(Lab_Stations)");
+            $labStmt->bind_param("si", $room_id, $capacity);
+            $labStmt->execute();
+            $labStmt->close();
+
+            $delLec = $conn->prepare("DELETE FROM LECTURE WHERE Lecture_ID = ?");
+            $delLec->bind_param("s", $room_id);
+            $delLec->execute();
+            $delLec->close();
+
+            $delOff = $conn->prepare("DELETE FROM OFFICE WHERE Office_ID = ?");
+            $delOff->bind_param("s", $room_id);
+            $delOff->execute();
+            $delOff->close();
+        } elseif ($room_type === 'Office') {
+            $offStmt = $conn->prepare("INSERT INTO OFFICE (Office_ID, Office_Desks) VALUES (?, ?) ON DUPLICATE KEY UPDATE Office_Desks = VALUES(Office_Desks)");
+            $offStmt->bind_param("si", $room_id, $capacity);
+            $offStmt->execute();
+            $offStmt->close();
+
+            $delLec = $conn->prepare("DELETE FROM LECTURE WHERE Lecture_ID = ?");
+            $delLec->bind_param("s", $room_id);
+            $delLec->execute();
+            $delLec->close();
+
+            $delLab = $conn->prepare("DELETE FROM LAB WHERE Lab_ID = ?");
+            $delLab->bind_param("s", $room_id);
+            $delLab->execute();
+            $delLab->close();
         }
-        http_response_code($isDbError ? 409 : 422);
-        echo json_encode([
-            'ok' => false,
-            'message' => $isDbError
-                ? 'Database could not save this facility. Check for duplicate or referenced records.'
-                : $error->getMessage(),
-        ]);
-    } finally {
-        if ($lockHeld) {
-            $conn->query("SELECT RELEASE_LOCK('lucid_facilities_manage_save')");
-        }
+
+        $conn->commit();
+
+        $_SESSION['success_message'] = "Room '{$room_id}' was successfully updated!";
+        header("Location: manage_facilities.php");
+        exit;
+
+    } else {
+        throw new Exception("Unknown action specified.");
     }
+
+} catch (Exception $e) {
+    if (isset($conn) && $conn->in_transaction) {
+        $conn->rollback();
+    }
+    $_SESSION['error_message'] = $e->getMessage();
+    header("Location: manage_facilities.php");
     exit;
 }

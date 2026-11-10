@@ -1,17 +1,29 @@
 {
+  "agent.terminal.autoApprove": true,
   "agent.terminal.allowedCommands": [
     "php -l",
-    "php.exe -l",
-    "q:\\XAMPP\\php\\php.exe -l",
-    "Q:\\XAMPP\\php\\php.exe -l",
     "php -v",
-    "php.exe -v",
     "git status",
     "git diff",
     "git log",
     "git branch",
     "git ls-files",
-    "dir",
-    "Get-ChildItem"
+    "git add",
+    "git commit",
+    "ls",
+    "pwd",
+    "cat",
+    "grep"
+  ],
+  "agent.terminal.deniedCommands": [
+    "git push",
+    "git rm",
+    "rm",
+    "del",
+    "rmdir",
+    "Remove-Item",
+    "git reset --hard",
+    "git clean",
+    "git branch -D"
   ]
 }

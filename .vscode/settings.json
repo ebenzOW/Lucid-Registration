@@ -1,4 +1,31 @@
 {
+  "agent.terminal.autoApprove": true,
+  "agent.terminal.allowedCommands": [
+    "php -l",
+    "php -v",
+    "git status",
+    "git diff",
+    "git log",
+    "git branch",
+    "git ls-files",
+    "git add",
+    "git commit",
+    "ls",
+    "pwd",
+    "cat",
+    "grep"
+  ],
+  "agent.terminal.deniedCommands": [
+    "git push",
+    "git rm",
+    "rm",
+    "del",
+    "rmdir",
+    "Remove-Item",
+    "git reset --hard",
+    "git clean",
+    "git branch -D"
+  ],
   "C_Cpp_Runner.cCompilerPath": "gcc",
   "C_Cpp_Runner.cppCompilerPath": "g++",
   "C_Cpp_Runner.debuggerPath": "gdb",

@@ -1,8 +1,12 @@
-<?php 
+<?php
+// Automatically route to the Windows host if running inside the Docker container
+if (file_exists('/.dockerenv')) {
+    $hostname = 'host.docker.internal';
+} else {
+    $hostname = 'localhost';
+}
 
-$hostname = "localhost";
-$db = "lucid_university";
-$username = "root";
-$password = "";
+$username = 'root';
+$password = '';
+$db       = 'lucid_university';
 ?>
-

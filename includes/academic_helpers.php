@@ -4,6 +4,8 @@
  * Academic Helpers (Procedural PHP)
  */
 
+require_once __DIR__ . '/../profile_hover_card.php';
+
 /**
  * Convert a letter grade to numeric quality points (4.0 scale).
  * Non-punitive marks ('P', 'W', 'I') return null.
@@ -243,7 +245,85 @@ function getStudentTranscriptData($conn, $student_id) {
 }
 
 /**
- * Helper to evaluate a list of requirements against completed history and active courses.
+ * Helper to evaluate a list of requirements with detailed attempt metadata.
+ */
+function evaluateDetailedRequirements($reqList, $allCourseAttempts, $inProgressCourses) {
+    $evaluated = [];
+
+    foreach ($reqList as $req) {
+        $cid = $req['Course_ID'];
+        $minGrade = trim($req['Min_Grade']);
+        $minPoint = getGradePoint($minGrade) ?? 2.0;
+
+        $status = 'Unfulfilled';
+        $badgeClass = 'text-bg-secondary';
+        $gradeEarned = null;
+        $termTaken = null;
+
+        // Check if course has graded attempts
+        if (!empty($allCourseAttempts[$cid])) {
+            $hasSatisfied = false;
+            $bestAttempt = null;
+            $bestPassingAttempt = null;
+            $bestPoint = -1.0;
+            $bestPassingPoint = -1.0;
+
+            foreach ($allCourseAttempts[$cid] as $attempt) {
+                $grade = strtoupper(trim((string)$attempt['Grade']));
+                $pt = getGradePoint($grade);
+
+                if ($grade === 'P' || ($pt !== null && $pt >= $minPoint)) {
+                    $hasSatisfied = true;
+                    if ($pt !== null && $pt > $bestPassingPoint) {
+                        $bestPassingPoint = $pt;
+                        $bestPassingAttempt = $attempt;
+                    } elseif ($bestPassingAttempt === null) {
+                        $bestPassingAttempt = $attempt;
+                    }
+                }
+
+                if ($pt !== null && $pt > $bestPoint) {
+                    $bestPoint = $pt;
+                    $bestAttempt = $attempt;
+                } elseif ($bestAttempt === null) {
+                    $bestAttempt = $attempt;
+                }
+            }
+
+            if ($hasSatisfied && $bestPassingAttempt) {
+                $status = 'Completed';
+                $badgeClass = 'text-bg-success';
+                $gradeEarned = $bestPassingAttempt['Grade'];
+                $termTaken = $bestPassingAttempt['Term_Label'];
+            } elseif ($bestAttempt) {
+                $status = 'Deficient';
+                $badgeClass = 'text-bg-warning';
+                $gradeEarned = $bestAttempt['Grade'];
+                $termTaken = $bestAttempt['Term_Label'];
+            }
+        }
+
+        // Check active enrollment in current/upcoming terms if not satisfied
+        if ($status !== 'Completed' && isset($inProgressCourses[$cid])) {
+            $status = 'In Progress';
+            $badgeClass = 'text-bg-primary';
+            $gradeEarned = 'In Progress';
+            $termTaken = $inProgressCourses[$cid]['Term_Label'];
+        }
+
+        $req['Status'] = $status;
+        $req['Status_Badge_Class'] = $badgeClass;
+        $req['Grade_Earned'] = $gradeEarned;
+        $req['Term_Taken'] = $termTaken;
+
+        $evaluated[] = $req;
+    }
+
+    return $evaluated;
+}
+
+/**
+ * Compatibility helper to evaluate a list of requirements against completed history and active courses.
  */
 function evaluateRequirementList($reqList, $historyCourses, $activeEnrolled) {
     $evaluated = [];
@@ -278,9 +358,8 @@ function evaluateRequirementList($reqList, $historyCourses, $activeEnrolled) {
 
             $gradeEarned = $bestGrade;
 
-            // Assign status: Satisfied if grade met minimum, otherwise Deficient
             if ($hasSatisfied) {
-                $status = 'Satisfied';
+                $status = 'Completed';
                 $badgeClass = 'text-bg-success';
             } else {
                 $status = 'Deficient';
@@ -288,10 +367,10 @@ function evaluateRequirementList($reqList, $historyCourses, $activeEnrolled) {
             }
         }
 
-        // Check active enrollment in current/upcoming terms if not already satisfied
-        if ($status !== 'Satisfied' && isset($activeEnrolled[$cid])) {
+        if ($status !== 'Completed' && isset($activeEnrolled[$cid])) {
             $status = 'In Progress';
             $badgeClass = 'text-bg-primary';
+            $gradeEarned = 'In Progress';
         }
 
         $req['Status'] = $status;
@@ -305,14 +384,23 @@ function evaluateRequirementList($reqList, $historyCourses, $activeEnrolled) {
 }
 
 /**
- * Fetch degree audit requirements for declared major(s) and minor.
+ * Fetch detailed degree audit requirements, departmental groupings, and elective credit progress.
  */
 function getDegreeAuditData($conn, $student_id) {
+    // 0. Fetch Student Type
+    $stuStmt = $conn->prepare("SELECT Student_Type FROM STUDENT WHERE Student_ID = ?");
+    $stuStmt->bind_param("i", $student_id);
+    $stuStmt->execute();
+    $stuRow = $stuStmt->get_result()->fetch_assoc();
+    $stuStmt->close();
+    $studentType = $stuRow['Student_Type'] ?? 'Undergraduate';
+
     // 1. Fetch majors
     $stmt = $conn->prepare("
-        SELECT m.Major_ID, m.Major_Name, m.No_Credits_Required
+        SELECT m.Major_ID, m.Major_Name, m.No_Credits_Required, m.Department_ID, d.Department_Name
         FROM STUDENT_MAJORS sm
         JOIN MAJORS m ON sm.Major_ID = m.Major_ID
+        LEFT JOIN DEPARTMENT d ON m.Department_ID = d.Department_ID
         WHERE sm.Student_ID = ?
         ORDER BY sm.Major_ID ASC
     ");
@@ -327,9 +415,10 @@ function getDegreeAuditData($conn, $student_id) {
 
     // 2. Fetch minors
     $stmt = $conn->prepare("
-        SELECT m.Minor_ID, m.Minor_Name, m.No_Credits_Required
+        SELECT m.Minor_ID, m.Minor_Name, m.No_Credits_Required, m.Department_ID, d.Department_Name
         FROM STUDENT_MINORS sm
         JOIN MINORS m ON sm.Minor_ID = m.Minor_ID
+        LEFT JOIN DEPARTMENT d ON m.Department_ID = d.Department_ID
         WHERE sm.Student_ID = ?
         ORDER BY sm.Minor_ID ASC
     ");
@@ -342,55 +431,85 @@ function getDegreeAuditData($conn, $student_id) {
     }
     $stmt->close();
 
-    // 3. Fetch completed courses from history
-    $stmt = $conn->prepare("SELECT Course_ID, Grade FROM STUDENT_HISTORY WHERE Student_ID = ?");
-    $stmt->bind_param("i", $student_id);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    $historyCourses = [];
-    while ($row = $res->fetch_assoc()) {
-        $historyCourses[$row['Course_ID']][] = $row['Grade'];
+    // 3. Fetch historical course attempts with semester and department metadata
+    $hStmt = $conn->prepare("
+        SELECT sh.CRN, sh.Course_ID, c.Course_Name, c.Course_Credits, c.Course_Type,
+               c.Department_ID, d.Department_Name,
+               sh.Semester_ID, sem.Semester_Name, sem.Semester_Year,
+               sh.Grade
+        FROM STUDENT_HISTORY sh
+        JOIN COURSES c ON sh.Course_ID = c.Course_ID
+        LEFT JOIN DEPARTMENT d ON c.Department_ID = d.Department_ID
+        LEFT JOIN SEMESTER sem ON sh.Semester_ID = sem.Semester_ID
+        WHERE sh.Student_ID = ?
+        ORDER BY sem.Start_Date ASC, sh.CRN ASC
+    ");
+    $hStmt->bind_param("i", $student_id);
+    $hStmt->execute();
+    $hRes = $hStmt->get_result();
+    $allCourseAttempts = [];
+    while ($row = $hRes->fetch_assoc()) {
+        $row['Term_Label'] = trim(($row['Semester_Name'] ?? '') . ' ' . ($row['Semester_Year'] ?? ''));
+        $allCourseAttempts[$row['Course_ID']][] = $row;
     }
-    $stmt->close();
+    $hStmt->close();
 
-    // 4. Fetch all active ungraded enrollments across current and upcoming terms
-    $stmt = $conn->prepare("
-        SELECT cs.Course_ID
+    // 4. Fetch active enrollments with section semester metadata
+    $actStmt = $conn->prepare("
+        SELECT e.CRN, cs.Course_ID, c.Course_Name, c.Course_Credits, c.Course_Type,
+               c.Department_ID, d.Department_Name,
+               cs.Semester_ID, sem.Semester_Name, sem.Semester_Year,
+               e.Grade
         FROM ENROLLMENT e
         JOIN COURSE_SECTIONS cs ON e.CRN = cs.CRN
-        WHERE e.Student_ID = ? AND e.Grade IS NULL
+        JOIN COURSES c ON cs.Course_ID = c.Course_ID
+        LEFT JOIN DEPARTMENT d ON c.Department_ID = d.Department_ID
+        LEFT JOIN SEMESTER sem ON cs.Semester_ID = sem.Semester_ID
+        WHERE e.Student_ID = ?
+        ORDER BY sem.Start_Date ASC, cs.CRN ASC
     ");
-    $stmt->bind_param("i", $student_id);
-    $stmt->execute();
-    $res = $stmt->get_result();
-    $activeEnrolled = [];
-    while ($row = $res->fetch_assoc()) {
-        $activeEnrolled[$row['Course_ID']] = true;
+    $actStmt->bind_param("i", $student_id);
+    $actStmt->execute();
+    $actRes = $actStmt->get_result();
+    $inProgressCourses = [];
+    while ($row = $actRes->fetch_assoc()) {
+        if ($row['Grade'] !== null && trim($row['Grade']) !== '') {
+            $row['Term_Label'] = trim(($row['Semester_Name'] ?? '') . ' ' . ($row['Semester_Year'] ?? ''));
+            $allCourseAttempts[$row['Course_ID']][] = $row;
+        } else {
+            $row['Term_Label'] = trim(($row['Semester_Name'] ?? '') . ' ' . ($row['Semester_Year'] ?? '')) . ' (In Progress)';
+            $inProgressCourses[$row['Course_ID']] = $row;
+        }
     }
-    $stmt->close();
+    $actStmt->close();
 
     // 5. Evaluate requirements for each declared major
     $majorsData = [];
     foreach ($majors as $m) {
         $mid = (int)$m['Major_ID'];
         $reqStmt = $conn->prepare("
-            SELECT mr.Course_ID, mr.Min_Grade, c.Course_Name, c.Course_Credits, c.Department_ID, d.Department_Name
+            SELECT mr.Course_ID, mr.Min_Grade, c.Course_Name, c.Course_Credits, c.Course_Type, c.Department_ID, d.Department_Name
             FROM MAJOR_REQUIREMENTS mr
             JOIN COURSES c ON mr.Course_ID = c.Course_ID
             LEFT JOIN DEPARTMENT d ON c.Department_ID = d.Department_ID
             WHERE mr.Major_ID = ?
-            ORDER BY c.Department_ID ASC, mr.Course_ID ASC
+            ORDER BY d.Department_Name ASC, mr.Course_ID ASC
         ");
         $reqStmt->bind_param("i", $mid);
         $reqStmt->execute();
         $rRes = $reqStmt->get_result();
-        $reqs = [];
-        while ($rRow = $rRes->fetch_assoc()) {
-            $reqs[] = $rRow;
-        }
+        $reqs = $rRes->fetch_all(MYSQLI_ASSOC);
         $reqStmt->close();
 
-        $m['requirements'] = evaluateRequirementList($reqs, $historyCourses, $activeEnrolled);
+        $evaluatedReqs = evaluateDetailedRequirements($reqs, $allCourseAttempts, $inProgressCourses);
+        $m['requirements'] = $evaluatedReqs;
+
+        $byDept = [];
+        foreach ($evaluatedReqs as $r) {
+            $dName = $r['Department_Name'] ?: 'General Program Requirements';
+            $byDept[$dName][] = $r;
+        }
+        $m['courses_by_department'] = $byDept;
         $majorsData[] = $m;
     }
 
@@ -399,30 +518,193 @@ function getDegreeAuditData($conn, $student_id) {
     foreach ($minors as $min) {
         $minId = (int)$min['Minor_ID'];
         $reqStmt = $conn->prepare("
-            SELECT mr.Course_ID, mr.Min_Grade, c.Course_Name, c.Course_Credits, c.Department_ID, d.Department_Name
+            SELECT mr.Course_ID, mr.Min_Grade, c.Course_Name, c.Course_Credits, c.Course_Type, c.Department_ID, d.Department_Name
             FROM MINOR_REQUIREMENTS mr
             JOIN COURSES c ON mr.Course_ID = c.Course_ID
             LEFT JOIN DEPARTMENT d ON c.Department_ID = d.Department_ID
             WHERE mr.Minor_ID = ?
-            ORDER BY c.Department_ID ASC, mr.Course_ID ASC
+            ORDER BY d.Department_Name ASC, mr.Course_ID ASC
         ");
         $reqStmt->bind_param("i", $minId);
         $reqStmt->execute();
         $rRes = $reqStmt->get_result();
-        $reqs = [];
-        while ($rRow = $rRes->fetch_assoc()) {
-            $reqs[] = $rRow;
-        }
+        $reqs = $rRes->fetch_all(MYSQLI_ASSOC);
         $reqStmt->close();
 
-        $min['requirements'] = evaluateRequirementList($reqs, $historyCourses, $activeEnrolled);
+        $evaluatedReqs = evaluateDetailedRequirements($reqs, $allCourseAttempts, $inProgressCourses);
+        $min['requirements'] = $evaluatedReqs;
+
+        $byDept = [];
+        foreach ($evaluatedReqs as $r) {
+            $dName = $r['Department_Name'] ?: 'General Program Requirements';
+            $byDept[$dName][] = $r;
+        }
+        $min['courses_by_department'] = $byDept;
         $minorsData[] = $min;
     }
 
+    // 7. Track Required Credits & Progress
+    $allRequiredCourseIds = [];
+    $uniqueRequiredCreditsTotal = 0;
+    $uniqueRequiredCreditsCompleted = 0;
+    $uniqueRequiredCreditsInProgress = 0;
+    $courseCreditsMap = [];
+    $courseStatusMap = [];
+
+    foreach ($majorsData as $m) {
+        foreach ($m['requirements'] as $req) {
+            $cid = $req['Course_ID'];
+            if (!in_array($cid, $allRequiredCourseIds, true)) {
+                $allRequiredCourseIds[] = $cid;
+                $courseCreditsMap[$cid] = (int)$req['Course_Credits'];
+            }
+            if ($req['Status'] === 'Completed') {
+                $courseStatusMap[$cid] = 'Completed';
+            } elseif ($req['Status'] === 'In Progress' && ($courseStatusMap[$cid] ?? '') !== 'Completed') {
+                $courseStatusMap[$cid] = 'In Progress';
+            }
+        }
+    }
+    foreach ($minorsData as $min) {
+        foreach ($min['requirements'] as $req) {
+            $cid = $req['Course_ID'];
+            if (!in_array($cid, $allRequiredCourseIds, true)) {
+                $allRequiredCourseIds[] = $cid;
+                $courseCreditsMap[$cid] = (int)$req['Course_Credits'];
+            }
+            if ($req['Status'] === 'Completed') {
+                $courseStatusMap[$cid] = 'Completed';
+            } elseif ($req['Status'] === 'In Progress' && ($courseStatusMap[$cid] ?? '') !== 'Completed') {
+                $courseStatusMap[$cid] = 'In Progress';
+            }
+        }
+    }
+
+    foreach ($allRequiredCourseIds as $cid) {
+        $cCredits = $courseCreditsMap[$cid] ?? 0;
+        $uniqueRequiredCreditsTotal += $cCredits;
+        $st = $courseStatusMap[$cid] ?? '';
+        if ($st === 'Completed') {
+            $uniqueRequiredCreditsCompleted += $cCredits;
+        } elseif ($st === 'In Progress') {
+            $uniqueRequiredCreditsInProgress += $cCredits;
+        }
+    }
+
+    // 8. Track Electives matching student academic level
+    $minPassPt = ($studentType === 'Graduate') ? 3.0 : 2.0;
+    $electiveCourses = [];
+    $completedElectives = [];
+    $inProgressElectives = [];
+    $seenElectives = [];
+
+    foreach ($allCourseAttempts as $cid => $attempts) {
+        if (in_array($cid, $allRequiredCourseIds, true)) {
+            continue;
+        }
+        $first = $attempts[0];
+        if (strcasecmp($first['Course_Type'] ?? '', $studentType) !== 0) {
+            continue;
+        }
+
+        $bestPassed = null;
+        $bestPt = -1.0;
+        foreach ($attempts as $att) {
+            $g = strtoupper(trim((string)$att['Grade']));
+            $pt = getGradePoint($g);
+            if ($g === 'P' || ($pt !== null && $pt >= $minPassPt)) {
+                if ($pt !== null && $pt > $bestPt) {
+                    $bestPt = $pt;
+                    $bestPassed = $att;
+                } elseif ($bestPassed === null) {
+                    $bestPassed = $att;
+                }
+            }
+        }
+
+        if ($bestPassed) {
+            $elItem = [
+                'Course_ID'          => $cid,
+                'Course_Name'        => $bestPassed['Course_Name'] ?? $cid,
+                'Department_Name'    => $bestPassed['Department_Name'] ?? 'General',
+                'Course_Credits'     => (int)$bestPassed['Course_Credits'],
+                'Term_Taken'         => $bestPassed['Term_Label'],
+                'Grade'              => $bestPassed['Grade'],
+                'Status'             => 'Completed',
+                'Status_Badge_Class' => 'text-bg-success',
+            ];
+            $electiveCourses[] = $elItem;
+            $completedElectives[] = $elItem;
+            $seenElectives[$cid] = true;
+        }
+    }
+
+    foreach ($inProgressCourses as $cid => $ip) {
+        if (in_array($cid, $allRequiredCourseIds, true) || isset($seenElectives[$cid])) {
+            continue;
+        }
+        if (strcasecmp($ip['Course_Type'] ?? '', $studentType) !== 0) {
+            continue;
+        }
+        $elItem = [
+            'Course_ID'          => $cid,
+            'Course_Name'        => $ip['Course_Name'] ?? $cid,
+            'Department_Name'    => $ip['Department_Name'] ?? 'General',
+            'Course_Credits'     => (int)$ip['Course_Credits'],
+            'Term_Taken'         => $ip['Term_Label'],
+            'Grade'              => 'In Progress',
+            'Status'             => 'In Progress',
+            'Status_Badge_Class' => 'text-bg-primary',
+        ];
+        $electiveCourses[] = $elItem;
+        $inProgressElectives[] = $elItem;
+        $seenElectives[$cid] = true;
+    }
+
+    $electiveCreditsCompleted = 0;
+    foreach ($completedElectives as $el) {
+        $electiveCreditsCompleted += (int)$el['Course_Credits'];
+    }
+    $electiveCreditsInProgress = 0;
+    foreach ($inProgressElectives as $el) {
+        $electiveCreditsInProgress += (int)$el['Course_Credits'];
+    }
+
+    $degreeCreditTarget = ($studentType === 'Undergraduate') ? 120 : (!empty($majorsData) ? (int)$majorsData[0]['No_Credits_Required'] : 24);
+    $electiveCreditsNeededTotal = max(0, $degreeCreditTarget - $uniqueRequiredCreditsTotal);
+    $electiveCreditsRemainingCompletedOnly = max(0, $electiveCreditsNeededTotal - $electiveCreditsCompleted);
+    $electiveCreditsRemainingAfterInProgress = max(0, $electiveCreditsNeededTotal - $electiveCreditsCompleted - $electiveCreditsInProgress);
+
+    $totalEarnedCredits = $uniqueRequiredCreditsCompleted + $electiveCreditsCompleted;
+    $totalInProgressCredits = $uniqueRequiredCreditsInProgress + $electiveCreditsInProgress;
+    $totalCreditsRemainingToTarget = max(0, $degreeCreditTarget - $totalEarnedCredits);
+    $totalCreditsRemainingAfterInProgress = max(0, $degreeCreditTarget - $totalEarnedCredits - $totalInProgressCredits);
+
     return [
-        'primary_major'   => $majorsData[0] ?? null,
-        'secondary_major' => $majorsData[1] ?? null,
-        'minor'           => $minorsData[0] ?? null,
+        'student_id'                               => $student_id,
+        'student_type'                             => $studentType,
+        'primary_major'                            => $majorsData[0] ?? null,
+        'secondary_major'                          => $majorsData[1] ?? null,
+        'minor'                                    => $minorsData[0] ?? null,
+        'majors'                                   => $majorsData,
+        'minors'                                   => $minorsData,
+        'all_required_course_ids'                  => $allRequiredCourseIds,
+        'unique_required_credits_total'            => $uniqueRequiredCreditsTotal,
+        'unique_required_credits_completed'        => $uniqueRequiredCreditsCompleted,
+        'unique_required_credits_in_progress'      => $uniqueRequiredCreditsInProgress,
+        'elective_courses'                         => $electiveCourses,
+        'completed_electives'                      => $completedElectives,
+        'in_progress_electives'                    => $inProgressElectives,
+        'degree_credit_target'                     => $degreeCreditTarget,
+        'elective_credits_needed_total'            => $electiveCreditsNeededTotal,
+        'elective_credits_completed'               => $electiveCreditsCompleted,
+        'elective_credits_in_progress'             => $electiveCreditsInProgress,
+        'elective_credits_remaining_completed_only'=> $electiveCreditsRemainingCompletedOnly,
+        'elective_credits_remaining_after_in_progress' => $electiveCreditsRemainingAfterInProgress,
+        'total_earned_credits'                     => $totalEarnedCredits,
+        'total_in_progress_credits'                => $totalInProgressCredits,
+        'total_credits_remaining_to_target'        => $totalCreditsRemainingToTarget,
+        'total_credits_remaining_after_in_progress'=> $totalCreditsRemainingAfterInProgress,
     ];
 }
 
@@ -1093,4 +1375,115 @@ function checkAndEnforceFailedPrerequisites($conn, $student_id) {
 
     return $notices;
 }
+
+/**
+ * Render unified Bootstrap 5.3 navigation bar for Administrator pages.
+ */
+function renderAdminNavbar(mysqli $conn, int $admin_id, string $activeFile = ''): string {
+    require_once __DIR__ . '/../profile_hover_card.php';
+
+    $navItems = [
+        'dashboard.php'              => 'Dashboard',
+        'create_user.php'            => 'Create User',
+        'view_users.php'             => 'View Users',
+        'create_course_section.php'  => 'Create Course Section',
+        'manage_courses.php'         => 'Manage Courses',
+        'manage_holds.php'           => 'Manage Holds',
+        'semesters.php'              => 'Semesters',
+        'majors_minors.php'          => 'Majors & Minors',
+        'manage_advisors.php'        => 'Advisors',
+        'manage_facilities.php'      => 'Facilities',
+    ];
+
+    $profileHtml = getUserNavbarProfileHtml($conn, $admin_id, 'Admin');
+
+    $linksHtml = '';
+    foreach ($navItems as $file => $label) {
+        $isActive = ($activeFile === $file);
+        $activeClass = $isActive ? ' active' : '';
+        $ariaCurrent = $isActive ? ' aria-current="page"' : '';
+        $escapedLabel = htmlspecialchars($label, ENT_QUOTES, 'UTF-8');
+        $linksHtml .= '<li class="nav-item">'
+            . '<a class="nav-link' . $activeClass . '"' . $ariaCurrent . ' href="' . $file . '">' . $escapedLabel . '</a>'
+            . '</li>' . "\n";
+    }
+
+    return <<<HTML
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
+        <div class="container-fluid px-lg-5">
+            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University <span class="badge bg-danger ms-1">Admin</span></a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNav" aria-controls="adminNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="adminNav">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    {$linksHtml}
+                </ul>
+                <div class="d-flex align-items-center gap-3">
+                    {$profileHtml}
+                    <form action="../logout.php" method="POST" class="m-0">
+                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </nav>
+HTML;
+}
+
+/**
+ * Render unified Bootstrap 5.3 navigation bar for Student pages.
+ */
+function renderStudentNavbar(mysqli $conn, int $student_id, string $activeFile = ''): string {
+    require_once __DIR__ . '/../profile_hover_card.php';
+
+    $navItems = [
+        'dashboard.php'       => 'Dashboard',
+        'schedule.php'        => 'My Schedule',
+        'master_schedule.php' => 'Master Schedule',
+        'register.php'        => 'Register / Add-Drop',
+        'transcript.php'      => 'Transcript',
+        'degree_audit.php'    => 'Degree Audit',
+        'holds.php'           => 'Holds',
+        'majors_minors.php'   => 'Majors & Minors',
+    ];
+
+    $profileHtml = getUserNavbarProfileHtml($conn, $student_id, 'Student');
+
+    $linksHtml = '';
+    foreach ($navItems as $file => $label) {
+        $isActive = ($activeFile === $file);
+        $activeClass = $isActive ? ' active' : '';
+        $ariaCurrent = $isActive ? ' aria-current="page"' : '';
+        $escapedLabel = htmlspecialchars($label, ENT_QUOTES, 'UTF-8');
+        $linksHtml .= '<li class="nav-item">'
+            . '<a class="nav-link' . $activeClass . '"' . $ariaCurrent . ' href="' . $file . '">' . $escapedLabel . '</a>'
+            . '</li>' . "\n";
+    }
+
+    return <<<HTML
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#studentNav" aria-controls="studentNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="studentNav">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    {$linksHtml}
+                </ul>
+                <div class="d-flex align-items-center gap-3">
+                    <span class="navbar-text text-white small d-none d-lg-inline">
+                        Welcome, {$profileHtml}
+                    </span>
+                    <form action="../logout.php" method="POST" class="m-0">
+                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </nav>
+HTML;
+}
+
 

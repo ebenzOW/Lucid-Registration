@@ -11,6 +11,7 @@ notes.txt
 TODO.txt    
 *.ps1
 *.md
+.antigravity/
 
 .devcontainer/
 # =========================

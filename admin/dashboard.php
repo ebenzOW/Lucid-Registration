@@ -1,10 +1,10 @@
 <?php
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
+require_once __DIR__ . '/../includes/academic_helpers.php';
 require_once '../profile_hover_card.php';
 
 $admin_id = (int)$userID;
-$adminNavHtml = getUserNavbarProfileHtml($conn, $admin_id, 'Admin');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -20,52 +20,7 @@ $adminNavHtml = getUserNavbarProfileHtml($conn, $admin_id, 'Admin');
 </head>
 <body class="bg-light">
 
-    <!-- Unified Admin Top Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
-        <div class="container-fluid px-lg-5">
-            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University <span class="badge bg-danger ms-1">Admin</span></a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNav" aria-controls="adminNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="adminNav">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="dashboard.php">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="create_user.php">Create User</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="view_users.php">View Users</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="create_course_section.php">Create Course Section</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="manage_courses.php">Manage Courses</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="manage_holds.php">Manage Holds</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="semesters.php">Semesters</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="majors_minors.php">Majors &amp; Minors</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="manage_advisors.php">Advisors</a>
-                    </li>
-                </ul>
-                <div class="d-flex align-items-center gap-3">
-                    <?= $adminNavHtml ?>
-                    <form action="../logout.php" method="POST" class="m-0">
-                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <?= renderAdminNavbar($conn, $admin_id, basename($_SERVER['PHP_SELF'])) ?>
 
     <div class="container-fluid px-lg-5 mb-5">
 
@@ -191,6 +146,19 @@ $adminNavHtml = getUserNavbarProfileHtml($conn, $admin_id, 'Admin');
                         </p>
                         <a href="manage_advisors.php" class="btn btn-outline-primary btn-sm mt-2">
                             Manage Advising &rarr;
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <h5 class="fw-bold text-dark mb-2">Campus Facilities</h5>
+                        <p class="text-secondary small flex-grow-1">
+                            Manage campus infrastructure, academic buildings, lecture halls, computer/science laboratories, and faculty department offices.
+                        </p>
+                        <a href="manage_facilities.php" class="btn btn-outline-primary btn-sm mt-2">
+                            Manage Facilities &rarr;
                         </a>
                     </div>
                 </div>

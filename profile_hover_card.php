@@ -28,4 +28,4 @@ function getUserNavbarProfileHtml($conn, $user_id, $user_type = null, $link_clas
 function getProfileHoverCardStyles() {
     return ''; // No-op to preserve backwards compatibility across existing view includes
 }
-?>
+

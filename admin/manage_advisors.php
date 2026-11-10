@@ -12,10 +12,10 @@
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
+require_once __DIR__ . '/../includes/academic_helpers.php';
 require_once '../profile_hover_card.php';
 
 $admin_id = (int)$userID;
-$adminNavHtml = getUserNavbarProfileHtml($conn, $admin_id, 'Admin');
 $canWrite = ((int)($_SESSION['Security_Level'] ?? 1) >= 2);
 
 $successMessage = $_SESSION["success_message"] ?? "";
@@ -31,12 +31,15 @@ if (!in_array($activeTab, ['students', 'faculty'], true)) {
 // 1. Fetch All Academic Departments
 // -----------------------------------------------------------------------------
 $departments = [];
-$deptRes = $conn->query("SELECT Department_ID, Department_Name FROM DEPARTMENT ORDER BY Department_Name ASC");
+$deptStmt = $conn->prepare("SELECT Department_ID, Department_Name FROM DEPARTMENT ORDER BY Department_Name ASC");
+$deptStmt->execute();
+$deptRes = $deptStmt->get_result();
 if ($deptRes) {
     while ($dRow = $deptRes->fetch_assoc()) {
         $departments[(int)$dRow['Department_ID']] = $dRow['Department_Name'];
     }
 }
+$deptStmt->close();
 
 // -----------------------------------------------------------------------------
 // 2. Fetch All Students, Declared Majors, and Assigned Advisors
@@ -65,7 +68,7 @@ $studentsSql = "
         f.Office_ID AS Faculty_Office,
         f.Faculty_Type,
         f.Rank AS Faculty_Rank,
-        d_f.Department_Name AS Faculty_Dept_Name
+        fac_depts.Faculty_Dept_Name
     FROM STUDENT s
     JOIN `USER` u_s ON s.Student_ID = u_s.User_ID
     LEFT JOIN LOGIN l_s ON s.Student_ID = l_s.User_ID
@@ -76,12 +79,18 @@ $studentsSql = "
     LEFT JOIN FACULTY f ON adv.Faculty_ID = f.Faculty_ID
     LEFT JOIN `USER` u_f ON f.Faculty_ID = u_f.User_ID
     LEFT JOIN LOGIN l_f ON f.Faculty_ID = l_f.User_ID
-    LEFT JOIN DEPARTMENT_ROSTER dr ON f.Faculty_ID = dr.Faculty_ID
-    LEFT JOIN DEPARTMENT d_f ON dr.Department_ID = d_f.Department_ID
+    LEFT JOIN (
+        SELECT dr.Faculty_ID, GROUP_CONCAT(DISTINCT d_f.Department_Name ORDER BY d_f.Department_Name SEPARATOR ', ') AS Faculty_Dept_Name
+        FROM DEPARTMENT_ROSTER dr
+        JOIN DEPARTMENT d_f ON dr.Department_ID = d_f.Department_ID
+        GROUP BY dr.Faculty_ID
+    ) fac_depts ON f.Faculty_ID = fac_depts.Faculty_ID
     ORDER BY u_s.User_LName ASC, u_s.User_FName ASC, s.Student_ID ASC
 ";
 
-$studentsResult = $conn->query($studentsSql);
+$studentsStmt = $conn->prepare($studentsSql);
+$studentsStmt->execute();
+$studentsResult = $studentsStmt->get_result();
 $students = [];
 $studentsAdvisedCount = 0;
 $studentsUnadvisedCount = 0;
@@ -137,6 +146,7 @@ if ($studentsResult) {
         }
     }
 }
+$studentsStmt->close();
 
 // Compute Advising Stats
 foreach ($students as &$stu) {
@@ -178,7 +188,9 @@ $facultySql = "
     ORDER BY u.User_LName ASC, u.User_FName ASC
 ";
 
-$facultyResult = $conn->query($facultySql);
+$facultyStmt = $conn->prepare($facultySql);
+$facultyStmt->execute();
+$facultyResult = $facultyStmt->get_result();
 $facultyList = [];
 $totalFullTimeFaculty = 0;
 $totalPartTimeFaculty = 0;
@@ -221,6 +233,7 @@ if ($facultyResult) {
         ];
     }
 }
+$facultyStmt->close();
 
 // -----------------------------------------------------------------------------
 // 4. Fetch Detailed Advisee Roster per Faculty Member
@@ -251,7 +264,9 @@ $adviseesSql = "
     ORDER BY u.User_LName ASC, u.User_FName ASC
 ";
 
-$adviseesResult = $conn->query($adviseesSql);
+$adviseesStmt = $conn->prepare($adviseesSql);
+$adviseesStmt->execute();
+$adviseesResult = $adviseesStmt->get_result();
 if ($adviseesResult) {
     while ($aRow = $adviseesResult->fetch_assoc()) {
         $fid = (int)$aRow['Faculty_ID'];
@@ -260,6 +275,7 @@ if ($adviseesResult) {
         }
     }
 }
+$adviseesStmt->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -288,52 +304,7 @@ if ($adviseesResult) {
 </head>
 <body class="bg-light">
 
-    <!-- Unified Admin Top Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
-        <div class="container-fluid px-lg-5">
-            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University <span class="badge bg-danger ms-1">Admin</span></a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNav" aria-controls="adminNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="adminNav">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link" href="dashboard.php">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="create_user.php">Create User</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="view_users.php">View Users</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="create_course_section.php">Create Course Section</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="manage_courses.php">Manage Courses</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="manage_holds.php">Manage Holds</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="semesters.php">Semesters</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="majors_minors.php">Majors &amp; Minors</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="manage_advisors.php">Advisors</a>
-                    </li>
-                </ul>
-                <div class="d-flex align-items-center gap-3">
-                    <?= $adminNavHtml ?>
-                    <form action="../logout.php" method="POST" class="m-0">
-                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <?= renderAdminNavbar($conn, $admin_id, basename($_SERVER['PHP_SELF'])) ?>
 
     <div class="container-fluid px-lg-5 mb-5">
 
@@ -433,7 +404,7 @@ if ($adviseesResult) {
             <!-- Multi-Select Bulk Assignment Action Bar (Hidden by default, shown via JS when >= 1 checkbox checked) -->
             <div id="bulkActionBar" class="card shadow-sm border-primary mb-4 bg-primary-subtle d-none">
                 <div class="card-body p-3">
-                    <form action="admin_manage_advisors_process.php" method="POST" id="bulkAssignForm" class="row g-2 align-items-center">
+                    <form action="manage_advisors_process.php" method="POST" id="bulkAssignForm" class="row g-2 align-items-center">
                         <input type="hidden" name="action" value="assign_batch">
                         <input type="hidden" name="return_tab" value="students">
                         <div id="bulkStudentHiddenInputs"></div>
@@ -576,7 +547,7 @@ if ($adviseesResult) {
                                                                 Assigned: <?= htmlspecialchars($adv['Date_Assigned']) ?>
                                                             </div>
                                                             <?php if ($canWrite): ?>
-                                                                <form action="admin_manage_advisors_process.php" method="POST" class="mt-1 m-0 d-inline" onsubmit="return confirm('Are you sure you want to remove Prof. <?= htmlspecialchars($adv['Faculty_FName'] . ' ' . $adv['Faculty_LName']) ?> as advisor for <?= htmlspecialchars($fullName) ?>?');">
+                                                                <form action="manage_advisors_process.php" method="POST" class="mt-1 m-0 d-inline" onsubmit="return confirm('Are you sure you want to remove Prof. <?= htmlspecialchars($adv['Faculty_FName'] . ' ' . $adv['Faculty_LName']) ?> as advisor for <?= htmlspecialchars($fullName) ?>?');">
                                                                     <input type="hidden" name="action" value="unassign">
                                                                     <input type="hidden" name="student_id" value="<?= $s['Student_ID'] ?>">
                                                                     <input type="hidden" name="faculty_id" value="<?= $adv['Faculty_ID'] ?>">
@@ -785,7 +756,7 @@ if ($adviseesResult) {
                                                                                 <td class="small text-muted"><?= htmlspecialchars($stuAdv['Date_Assigned']) ?></td>
                                                                                 <?php if ($canWrite): ?>
                                                                                     <td class="text-end">
-                                                                                        <form action="admin_manage_advisors_process.php" method="POST" class="m-0 d-inline" onsubmit="return confirm('Remove student <?= htmlspecialchars($stuAdv['Student_FName'] . ' ' . $stuAdv['Student_LName']) ?> from this advisor?');">
+                                                                                        <form action="manage_advisors_process.php" method="POST" class="m-0 d-inline" onsubmit="return confirm('Remove student <?= htmlspecialchars($stuAdv['Student_FName'] . ' ' . $stuAdv['Student_LName']) ?> from this advisor?');">
                                                                                             <input type="hidden" name="action" value="unassign">
                                                                                             <input type="hidden" name="faculty_id" value="<?= $f['Faculty_ID'] ?>">
                                                                                             <input type="hidden" name="student_id" value="<?= $stuAdv['Student_ID'] ?>">
@@ -823,7 +794,7 @@ if ($adviseesResult) {
     <div class="modal fade" id="singleAssignModal" tabindex="-1" aria-labelledby="singleAssignModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
-                <form action="admin_manage_advisors_process.php" method="POST">
+                <form action="manage_advisors_process.php" method="POST">
                     <input type="hidden" name="action" value="assign_single">
                     <input type="hidden" name="student_id" id="modalStudentIdInput" value="">
                     <input type="hidden" name="return_tab" value="students">
