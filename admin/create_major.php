@@ -93,6 +93,15 @@ $suggestedMajorID = ($maxRow && $maxRow['MaxID']) ? ((int)$maxRow['MaxID'] + 1) 
                     </div>
 
                     <div class="mb-3">
+                        <label for="program_level" class="form-label fw-semibold">Program Level</label>
+                        <select class="form-select" id="program_level" name="program_level" required>
+                            <option value="Undergraduate" selected>Undergraduate</option>
+                            <option value="Graduate">Graduate</option>
+                            <option value="Ph.D.">Ph.D.</option>
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
                         <label for="department_id" class="form-label fw-semibold">Academic Department</label>
                         <select class="form-select" id="department_id" name="department_id" required>
                             <option value="">Select Academic Department...</option>

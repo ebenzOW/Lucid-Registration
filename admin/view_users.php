@@ -347,7 +347,7 @@ $yearMap = [
                                 <tr>
                                     <th>User ID</th>
                                     <th>Role</th>
-                                    <th>Status</th>
+                                    <th>Login Status</th>
                                     <th>Full Name</th>
                                     <th>Email</th>
                                     <th>Gender</th>
@@ -363,7 +363,7 @@ $yearMap = [
                                     <th>Full Name</th>
                                     <th>Email</th>
                                     <th>Security Level</th>
-                                    <th>Status</th>
+                                    <th>Login Status</th>
                                     <th>Gender</th>
                                     <th>Date of Birth</th>
                                     <th>Phone</th>

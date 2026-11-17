@@ -95,7 +95,7 @@ $filterCrn        = isset($_GET['crn']) ? filter_var($_GET['crn'], FILTER_VALIDA
 $filterSection    = (isset($_GET['section']) && trim($_GET['section']) !== '') ? trim($_GET['section']) : null;
 $filterTimeSlot   = isset($_GET['time_slot_id']) ? filter_var($_GET['time_slot_id'], FILTER_VALIDATE_INT) : null;
 $filterInstructor = isset($_GET['instructor']) ? trim($_GET['instructor']) : '';
-$filterCredits    = isset($_GET['credits']) ? (trim($_GET['credits']) !== '' ? filter_var($_GET['credits'], FILTER_VALIDATE_INT) : '') : 4;
+$filterCredits    = isset($_GET['credits']) ? (trim($_GET['credits']) !== '' ? filter_var($_GET['credits'], FILTER_VALIDATE_INT) : '') : '';
 $filterOpenOnly   = !empty($_GET['open_only']);
 
 $searchFilters = [
@@ -271,7 +271,7 @@ unset($_SESSION['flash_error'], $_SESSION['flash_success']);
                                         <td><?= htmlspecialchars((string)$sec['Course_Credits'], ENT_QUOTES, 'UTF-8') ?></td>
                                         <td><?= formatSchedule($sec['Time_Slot_Day'], $sec['Start_Time'], $sec['End_Time']) ?></td>
                                         <td><?= htmlspecialchars($sec['Building_Name'] . ' ' . $sec['Room_NO'], ENT_QUOTES, 'UTF-8') ?></td>
-                                        <td><?= htmlspecialchars($sec['Instructor_Name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><?= renderFacultyLink($sec['Faculty_ID'] ?? 0, $sec['Instructor_Name'], '../') ?></td>
                                         <td class="text-end pe-3">
                                             <!-- Plain HTML POST Form to drop_action.php -->
                                             <form method="POST" action="drop_action.php" class="d-inline">
@@ -419,7 +419,7 @@ unset($_SESSION['flash_error'], $_SESSION['flash_success']);
                                             </div>
                                         </td>
                                         <td><?= htmlspecialchars((string)$sec['Course_Credits'], ENT_QUOTES, 'UTF-8') ?></td>
-                                        <td><?= htmlspecialchars($sec['Instructor_Name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><?= renderFacultyLink($sec['Faculty_ID'] ?? 0, $sec['Instructor_Name'], '../') ?></td>
                                         <td><?= formatSchedule($sec['Time_Slot_Day'], $sec['Start_Time'], $sec['End_Time']) ?></td>
                                         <td><?= htmlspecialchars($sec['Building_Name'] . ' ' . $sec['Room_NO'], ENT_QUOTES, 'UTF-8') ?></td>
                                         <td>

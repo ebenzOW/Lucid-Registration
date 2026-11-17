@@ -25,6 +25,7 @@ try {
     if ($action === 'create_major') {
         $major_id            = isset($_POST['major_id']) ? (int)$_POST['major_id'] : 0;
         $major_name          = trim($_POST['major_name'] ?? '');
+        $program_level       = trim($_POST['program_level'] ?? 'Undergraduate');
         $department_id       = isset($_POST['department_id']) ? (int)$_POST['department_id'] : 0;
         $no_credits_required = isset($_POST['no_credits_required']) ? (int)$_POST['no_credits_required'] : 0;
 
@@ -33,6 +34,9 @@ try {
         }
         if (empty($major_name)) {
             throw new Exception("Major Program Name cannot be blank.");
+        }
+        if (!in_array($program_level, ['Undergraduate', 'Graduate', 'Ph.D.'], true)) {
+            throw new Exception("Please select a valid program level (Undergraduate, Graduate, or Ph.D.).");
         }
         if ($department_id <= 0) {
             throw new Exception("Please select a valid academic department.");
@@ -52,8 +56,8 @@ try {
         }
         $dupStmt->close();
 
-        $insStmt = $conn->prepare("INSERT INTO MAJORS (Major_ID, Department_ID, Major_Name, No_Credits_Required) VALUES (?, ?, ?, ?)");
-        $insStmt->bind_param("iisi", $major_id, $department_id, $major_name, $no_credits_required);
+        $insStmt = $conn->prepare("INSERT INTO MAJORS (Major_ID, Department_ID, Major_Name, Program_Level, No_Credits_Required) VALUES (?, ?, ?, ?, ?)");
+        $insStmt->bind_param("iissi", $major_id, $department_id, $major_name, $program_level, $no_credits_required);
         if (!$insStmt->execute()) {
             throw new Exception("Database error inserting major: " . $insStmt->error);
         }
@@ -67,6 +71,7 @@ try {
     } elseif ($action === 'update_major') {
         $major_id            = isset($_POST['major_id']) ? (int)$_POST['major_id'] : 0;
         $major_name          = trim($_POST['major_name'] ?? '');
+        $program_level       = trim($_POST['program_level'] ?? 'Undergraduate');
         $department_id       = isset($_POST['department_id']) ? (int)$_POST['department_id'] : 0;
         $no_credits_required = isset($_POST['no_credits_required']) ? (int)$_POST['no_credits_required'] : 0;
 
@@ -75,6 +80,9 @@ try {
         }
         if (empty($major_name)) {
             throw new Exception("Major Program Name cannot be blank.");
+        }
+        if (!in_array($program_level, ['Undergraduate', 'Graduate', 'Ph.D.'], true)) {
+            throw new Exception("Please select a valid program level (Undergraduate, Graduate, or Ph.D.).");
         }
         if ($department_id <= 0) {
             throw new Exception("Please select a valid academic department.");
@@ -94,8 +102,8 @@ try {
         }
         $checkStmt->close();
 
-        $updStmt = $conn->prepare("UPDATE MAJORS SET Department_ID = ?, Major_Name = ?, No_Credits_Required = ? WHERE Major_ID = ?");
-        $updStmt->bind_param("isii", $department_id, $major_name, $no_credits_required, $major_id);
+        $updStmt = $conn->prepare("UPDATE MAJORS SET Department_ID = ?, Major_Name = ?, Program_Level = ?, No_Credits_Required = ? WHERE Major_ID = ?");
+        $updStmt->bind_param("issii", $department_id, $major_name, $program_level, $no_credits_required, $major_id);
         if (!$updStmt->execute()) {
             throw new Exception("Failed to update major: " . $updStmt->error);
         }
@@ -158,6 +166,7 @@ try {
     } elseif ($action === 'create_minor') {
         $minor_id            = isset($_POST['minor_id']) ? (int)$_POST['minor_id'] : 0;
         $minor_name          = trim($_POST['minor_name'] ?? '');
+        $program_level       = trim($_POST['program_level'] ?? 'Undergraduate');
         $department_id       = isset($_POST['department_id']) ? (int)$_POST['department_id'] : 0;
         $no_credits_required = isset($_POST['no_credits_required']) ? (int)$_POST['no_credits_required'] : 0;
 
@@ -166,6 +175,9 @@ try {
         }
         if (empty($minor_name)) {
             throw new Exception("Minor Program Name cannot be blank.");
+        }
+        if (!in_array($program_level, ['Undergraduate', 'Graduate', 'Ph.D.'], true)) {
+            throw new Exception("Please select a valid program level (Undergraduate, Graduate, or Ph.D.).");
         }
         if ($department_id <= 0) {
             throw new Exception("Please select a valid academic department.");
@@ -185,8 +197,8 @@ try {
         }
         $dupStmt->close();
 
-        $insStmt = $conn->prepare("INSERT INTO MINORS (Minor_ID, Department_ID, Minor_Name, No_Credits_Required) VALUES (?, ?, ?, ?)");
-        $insStmt->bind_param("iisi", $minor_id, $department_id, $minor_name, $no_credits_required);
+        $insStmt = $conn->prepare("INSERT INTO MINORS (Minor_ID, Department_ID, Minor_Name, Program_Level, No_Credits_Required) VALUES (?, ?, ?, ?, ?)");
+        $insStmt->bind_param("iissi", $minor_id, $department_id, $minor_name, $program_level, $no_credits_required);
         if (!$insStmt->execute()) {
             throw new Exception("Database error inserting minor: " . $insStmt->error);
         }
@@ -200,6 +212,7 @@ try {
     } elseif ($action === 'update_minor') {
         $minor_id            = isset($_POST['minor_id']) ? (int)$_POST['minor_id'] : 0;
         $minor_name          = trim($_POST['minor_name'] ?? '');
+        $program_level       = trim($_POST['program_level'] ?? 'Undergraduate');
         $department_id       = isset($_POST['department_id']) ? (int)$_POST['department_id'] : 0;
         $no_credits_required = isset($_POST['no_credits_required']) ? (int)$_POST['no_credits_required'] : 0;
 
@@ -208,6 +221,9 @@ try {
         }
         if (empty($minor_name)) {
             throw new Exception("Minor Program Name cannot be blank.");
+        }
+        if (!in_array($program_level, ['Undergraduate', 'Graduate', 'Ph.D.'], true)) {
+            throw new Exception("Please select a valid program level (Undergraduate, Graduate, or Ph.D.).");
         }
         if ($department_id <= 0) {
             throw new Exception("Please select a valid academic department.");
@@ -227,8 +243,8 @@ try {
         }
         $checkStmt->close();
 
-        $updStmt = $conn->prepare("UPDATE MINORS SET Department_ID = ?, Minor_Name = ?, No_Credits_Required = ? WHERE Minor_ID = ?");
-        $updStmt->bind_param("isii", $department_id, $minor_name, $no_credits_required, $minor_id);
+        $updStmt = $conn->prepare("UPDATE MINORS SET Department_ID = ?, Minor_Name = ?, Program_Level = ?, No_Credits_Required = ? WHERE Minor_ID = ?");
+        $updStmt->bind_param("issii", $department_id, $minor_name, $program_level, $no_credits_required, $minor_id);
         if (!$updStmt->execute()) {
             throw new Exception("Failed to update minor: " . $updStmt->error);
         }

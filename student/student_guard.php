@@ -11,3 +11,8 @@ if (!($_SESSION["User_Type"] === "Student")) {
 }
 $userID = $_SESSION["User_ID"];
 
+// Why: Ensure user name sub-keys are always populated in session for dashboard greetings
+require_once __DIR__ . '/../db_connect.php';
+require_once __DIR__ . '/../includes/academic_helpers.php';
+ensureSessionUserLoaded($conn, $userID);
+

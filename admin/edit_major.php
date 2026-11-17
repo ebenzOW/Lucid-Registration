@@ -24,7 +24,7 @@ if ($major_id <= 0) {
 
 // 1. Fetch Major
 $stmt = $conn->prepare("
-    SELECT m.Major_ID, m.Major_Name, m.No_Credits_Required, m.Department_ID, d.Department_Name
+    SELECT m.Major_ID, m.Major_Name, m.Program_Level, m.No_Credits_Required, m.Department_ID, d.Department_Name
     FROM MAJORS m
     JOIN DEPARTMENT d ON m.Department_ID = d.Department_ID
     WHERE m.Major_ID = ?
@@ -151,6 +151,20 @@ $canWrite = ((int)($_SESSION['Security_Level'] ?? 1) >= 2);
                                    value="<?= htmlspecialchars($major['Major_Name']) ?>" <?= $canWrite ? 'required' : 'readonly' ?> maxlength="100">
                         </div>
                         <div class="col-md-4">
+                            <label for="program_level" class="form-label fw-semibold">Program Level</label>
+                            <?php if ($canWrite): ?>
+                                <select class="form-select" id="program_level" name="program_level" required>
+                                    <?php foreach (['Undergraduate', 'Graduate', 'Ph.D.'] as $lvl): ?>
+                                        <option value="<?= $lvl ?>" <?= (($major['Program_Level'] ?? 'Undergraduate') === $lvl) ? 'selected' : '' ?>>
+                                            <?= $lvl ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            <?php else: ?>
+                                <input type="text" class="form-control" value="<?= htmlspecialchars($major['Program_Level'] ?? 'Undergraduate') ?>" readonly>
+                            <?php endif; ?>
+                        </div>
+                        <div class="col-md-6">
                             <label for="department_id" class="form-label fw-semibold">Department</label>
                             <?php if ($canWrite): ?>
                                 <select class="form-select" id="department_id" name="department_id" required>
@@ -170,11 +184,11 @@ $canWrite = ((int)($_SESSION['Security_Level'] ?? 1) >= 2);
                                    value="<?= (int)$major['No_Credits_Required'] ?>" <?= $canWrite ? 'required min="1"' : 'readonly' ?>>
                             <div class="form-text small">Statutory degree credit requirement (e.g. 120, 24, 60).</div>
                         </div>
-                        <div class="col-md-6 d-flex align-items-end">
+                        <div class="col-md-12 d-flex justify-content-end mt-3">
                             <?php if ($canWrite): ?>
-                                <button type="submit" class="btn btn-primary w-100 fw-semibold">Save Major Attributes</button>
+                                <button type="submit" class="btn btn-primary px-4 fw-semibold">Save Major Attributes</button>
                             <?php else: ?>
-                                <button type="button" class="btn btn-secondary w-100" disabled>Read-Only Access</button>
+                                <button type="button" class="btn btn-secondary px-4" disabled>Read-Only Access</button>
                             <?php endif; ?>
                         </div>
                     </div>

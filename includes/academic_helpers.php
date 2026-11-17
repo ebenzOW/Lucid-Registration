@@ -751,7 +751,7 @@ function getSemesterInfo($conn, $semester_id) {
  */
 function getStudentScheduleBySemester($conn, $student_id, $semester_id) {
     $stmt = $conn->prepare("
-        SELECT e.CRN, cs.Course_ID, cs.Section_Number, cs.Semester_ID,
+        SELECT e.CRN, cs.Course_ID, cs.Section_Number, cs.Semester_ID, cs.Faculty_ID,
                c.Course_Name, c.Course_Credits, c.Course_Type,
                dept.Department_Name,
                ts.Time_Slot_Day, p.Start_Time, p.End_Time,
@@ -929,13 +929,27 @@ function searchMasterSchedule($conn, $filters = []) {
         $where[] = "cs.Available_seats > 0";
     }
 
+    // 11. status (string, exact match on cs.Status when specified and not 'All')
+    if (!empty($filters['status']) && $filters['status'] !== 'All') {
+        $where[] = "cs.Status = ?";
+        $params[] = $filters['status'];
+        $types .= "s";
+    }
+
     $sql = "
-        SELECT cs.CRN, cs.Course_ID, cs.Section_Number, cs.Available_seats, cs.Semester_ID,
+        SELECT cs.CRN, cs.Course_ID, cs.Section_Number, cs.Available_seats, cs.Semester_ID, cs.Status, cs.Faculty_ID,
                c.Course_Name, c.Course_Credits, c.Course_Type, c.Department_ID,
                dept.Department_Name,
                cs.Time_Slot_ID, ts.Time_Slot_Day, p.Start_Time, p.End_Time,
-               cs.Room_ID, b.Building_Name, r.Room_NO,
-               COALESCE(CONCAT(u_fac.User_FName, ' ', u_fac.User_LName), 'Staff') AS Instructor_Name
+               cs.Room_ID, b.Building_Name, r.Room_NO, r.Room_Type,
+               COALESCE(lec.Lecture_Seats, lb.Lab_Stations, 0) AS Room_Capacity,
+               s.Semester_Name, s.Semester_Year, s.Start_Date, s.End_Date,
+               f.Rank AS Instructor_Rank, l_fac.User_Email AS Instructor_Email,
+               COALESCE(CONCAT(u_fac.User_FName, ' ', u_fac.User_LName), 'Staff') AS Instructor_Name,
+               CASE
+                   WHEN cs.Semester_ID < 202608 THEN (SELECT COUNT(*) FROM STUDENT_HISTORY sh WHERE sh.CRN = cs.CRN)
+                   ELSE (SELECT COUNT(*) FROM ENROLLMENT e WHERE e.CRN = cs.CRN)
+               END AS Enrolled_Count
         FROM COURSE_SECTIONS cs
         JOIN COURSES c ON cs.Course_ID = c.Course_ID
         LEFT JOIN DEPARTMENT dept ON c.Department_ID = dept.Department_ID
@@ -943,8 +957,12 @@ function searchMasterSchedule($conn, $filters = []) {
         JOIN PERIOD p ON ts.Period_ID = p.Period_ID
         JOIN ROOM r ON cs.Room_ID = r.Room_ID
         JOIN BUILDING b ON r.Building_ID = b.Building_ID
+        LEFT JOIN LAB lb ON r.Room_ID = lb.Lab_ID
+        LEFT JOIN LECTURE lec ON r.Room_ID = lec.Lecture_ID
+        LEFT JOIN SEMESTER s ON cs.Semester_ID = s.Semester_ID
         LEFT JOIN FACULTY f ON cs.Faculty_ID = f.Faculty_ID
         LEFT JOIN `USER` u_fac ON f.Faculty_ID = u_fac.User_ID
+        LEFT JOIN LOGIN l_fac ON u_fac.User_ID = l_fac.User_ID
         WHERE " . implode(" AND ", $where) . "
         ORDER BY c.Course_ID ASC, cs.Section_Number ASC
     ";
@@ -1021,19 +1039,102 @@ function getPrerequisitesForCourses($conn, array $courseIds) {
 }
 
 /**
- * Fetch teaching schedule for a faculty member in a specific semester.
+ * Hydrate session user name sub-keys if missing.
+ */
+function ensureSessionUserLoaded($conn, $userID) {
+    if (!isset($_SESSION["User"]["User_FName"]) && !empty($userID)) {
+        $uid = (int)$userID;
+        $stmt = $conn->prepare("SELECT User_FName, User_MName, User_LName FROM `USER` WHERE User_ID = ?");
+        $stmt->bind_param("i", $uid);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        if ($row) {
+            $_SESSION["User"] = $row;
+        }
+    }
+}
+
+/**
+ * Retrieve comprehensive faculty profile, office, and department appointment details.
+ */
+function getFacultyProfile($conn, $faculty_id) {
+    $fid = (int)$faculty_id;
+    $stmt = $conn->prepare("
+        SELECT f.Faculty_ID, f.Faculty_Type, f.Rank, f.Specialty, f.Office_ID,
+               u.User_FName, u.User_MName, u.User_LName, u.User_PhoneNo,
+               u.User_Gender, u.User_DOB, u.Street_No, u.Street_Name, u.City, u.State, u.Zip_Code, u.Country,
+               l.User_Email,
+               r.Room_NO AS Office_Room_NO, b.Building_Name AS Office_Building_Name, o.Office_Desks,
+               GROUP_CONCAT(DISTINCT d.Department_Name ORDER BY d.Department_Name SEPARATOR ', ') AS Department_Names
+        FROM FACULTY f
+        JOIN `USER` u ON f.Faculty_ID = u.User_ID
+        LEFT JOIN LOGIN l ON u.User_ID = l.User_ID
+        LEFT JOIN ROOM r ON f.Office_ID = r.Room_ID
+        LEFT JOIN BUILDING b ON r.Building_ID = b.Building_ID
+        LEFT JOIN OFFICE o ON f.Office_ID = o.Office_ID
+        LEFT JOIN DEPARTMENT_ROSTER dr ON f.Faculty_ID = dr.Faculty_ID
+        LEFT JOIN DEPARTMENT d ON dr.Department_ID = d.Department_ID
+        WHERE f.Faculty_ID = ?
+        GROUP BY f.Faculty_ID, f.Faculty_Type, f.Rank, f.Specialty, f.Office_ID,
+                 u.User_FName, u.User_MName, u.User_LName, u.User_PhoneNo,
+                 u.User_Gender, u.User_DOB, u.Street_No, u.Street_Name, u.City, u.State, u.Zip_Code, u.Country,
+                 l.User_Email, r.Room_NO, b.Building_Name, o.Office_Desks
+    ");
+    $stmt->bind_param("i", $fid);
+    $stmt->execute();
+    $faculty = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    if (!$faculty) {
+        return null;
+    }
+    $faculty['full_name'] = trim($faculty['User_FName'] . ' ' . (!empty($faculty['User_MName']) ? $faculty['User_MName'] . ' ' : '') . $faculty['User_LName']);
+    return $faculty;
+}
+
+/**
+ * Render clickable faculty profile link or plain-text Staff.
+ */
+function renderFacultyLink($faculty_id, $instructor_name, $root_prefix = '../') {
+    if (empty($faculty_id) || empty($instructor_name) || strcasecmp(trim($instructor_name), 'Staff') === 0) {
+        return htmlspecialchars($instructor_name ?: 'Staff', ENT_QUOTES, 'UTF-8');
+    }
+    $fid = (int)$faculty_id;
+    $name = htmlspecialchars($instructor_name, ENT_QUOTES, 'UTF-8');
+    $prefix = htmlspecialchars($root_prefix, ENT_QUOTES, 'UTF-8');
+    return '<a href="' . $prefix . 'user_profile.php?user_id=' . $fid . '" class="text-decoration-none fw-semibold text-primary">' . $name . '</a>';
+}
+
+/**
+ * Fetch teaching schedule for a faculty member in a specific semester (or across all semesters if $semester_id is null).
  * Mirrors getStudentScheduleBySemester with exact table joins, section enrollment counts, and seat stats.
  * Returns: ['sections' => $sections, 'crns' => $crns, 'total_sections' => count($sections)]
  */
-function getFacultyScheduleBySemester($conn, $faculty_id, $semester_id) {
+function getFacultyScheduleBySemester($conn, $faculty_id, $semester_id = null) {
     // Why: Allows faculty dashboards and administrative viewers to retrieve a faculty member's teaching load with live enrollment counts.
-    $stmt = $conn->prepare("
+    $faculty_id = (int)$faculty_id;
+    $where = ["cs.Faculty_ID = ?"];
+    $params = [$faculty_id];
+    $types = "i";
+
+    if ($semester_id !== null) {
+        $where[] = "cs.Semester_ID = ?";
+        $params[] = (int)$semester_id;
+        $types .= "i";
+    }
+
+    $sql = "
         SELECT cs.CRN, cs.Course_ID, cs.Section_Number, cs.Semester_ID, cs.Available_seats, cs.Status,
                c.Course_Name, c.Course_Credits, c.Course_Type,
                dept.Department_Name,
                ts.Time_Slot_Day, p.Start_Time, p.End_Time,
-               b.Building_Name, r.Room_NO,
-               (SELECT COUNT(*) FROM ENROLLMENT e WHERE e.CRN = cs.CRN) AS Enrolled_Count
+               b.Building_Name, r.Room_NO, r.Room_Type,
+               COALESCE(lec.Lecture_Seats, lb.Lab_Stations, 0) AS Room_Capacity,
+               s.Semester_Name, s.Semester_Year, s.Start_Date, s.End_Date,
+               CASE
+                   WHEN cs.Semester_ID < 202608 THEN (SELECT COUNT(*) FROM STUDENT_HISTORY sh WHERE sh.CRN = cs.CRN)
+                   ELSE (SELECT COUNT(*) FROM ENROLLMENT e WHERE e.CRN = cs.CRN)
+               END AS Enrolled_Count
         FROM COURSE_SECTIONS cs
         JOIN COURSES c ON cs.Course_ID = c.Course_ID
         LEFT JOIN DEPARTMENT dept ON c.Department_ID = dept.Department_ID
@@ -1041,10 +1142,15 @@ function getFacultyScheduleBySemester($conn, $faculty_id, $semester_id) {
         JOIN PERIOD p ON ts.Period_ID = p.Period_ID
         JOIN ROOM r ON cs.Room_ID = r.Room_ID
         JOIN BUILDING b ON r.Building_ID = b.Building_ID
-        WHERE cs.Faculty_ID = ? AND cs.Semester_ID = ?
-        ORDER BY c.Course_ID ASC, cs.Section_Number ASC
-    ");
-    $stmt->bind_param("ii", $faculty_id, $semester_id);
+        LEFT JOIN LAB lb ON r.Room_ID = lb.Lab_ID
+        LEFT JOIN LECTURE lec ON r.Room_ID = lec.Lecture_ID
+        LEFT JOIN SEMESTER s ON cs.Semester_ID = s.Semester_ID
+        WHERE " . implode(" AND ", $where) . "
+        ORDER BY cs.Semester_ID DESC, c.Course_ID ASC, cs.Section_Number ASC
+    ";
+
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param($types, ...$params);
     $stmt->execute();
     $res = $stmt->get_result();
 
@@ -1066,46 +1172,79 @@ function getFacultyScheduleBySemester($conn, $faculty_id, $semester_id) {
 /**
  * Query students enrolled in a specific section (CRN).
  * If $faculty_id is provided, enforces that the calling faculty member teaches this section.
+ * Supports both historical terms (< 202608 via STUDENT_HISTORY) and current/future terms (>= 202608 via ENROLLMENT).
  * Returns array of student records (Student_ID, full_name, email, class_standing, Attendance_Type, majors, Grade).
  */
 function getSectionRoster($conn, $crn, $faculty_id = null) {
     $crn = (int)$crn;
 
-    // Why: Authorization check ensuring faculty can only view rosters for sections assigned to them.
-    if ($faculty_id !== null) {
-        $facCheckStmt = $conn->prepare("SELECT 1 FROM COURSE_SECTIONS WHERE CRN = ? AND Faculty_ID = ?");
-        $facCheckStmt->bind_param("ii", $crn, $faculty_id);
-        $facCheckStmt->execute();
-        $isAuthorized = $facCheckStmt->get_result()->fetch_row();
-        $facCheckStmt->close();
+    // Fetch section details to verify existence, semester, and instructor
+    $secStmt = $conn->prepare("SELECT CRN, Semester_ID, Faculty_ID FROM COURSE_SECTIONS WHERE CRN = ?");
+    $secStmt->bind_param("i", $crn);
+    $secStmt->execute();
+    $sec = $secStmt->get_result()->fetch_assoc();
+    $secStmt->close();
 
-        if (!$isAuthorized) {
-            return null; // Unauthorized access
-        }
+    if (!$sec) {
+        return [];
     }
 
-    $stmt = $conn->prepare("
-        SELECT s.Student_ID,
-               u.User_FName, u.User_MName, u.User_LName,
-               l.User_Email,
-               s.Student_Year, s.Student_Type,
-               d.Department_Name,
-               e.Grade,
-               COALESCE(ug.Undergrad_Type, g.Grad_Type, 'Full-Time') AS Attendance_Type,
-               (SELECT GROUP_CONCAT(m.Major_Name SEPARATOR ', ')
-                FROM STUDENT_MAJORS sm
-                JOIN MAJORS m ON sm.Major_ID = m.Major_ID
-                WHERE sm.Student_ID = s.Student_ID) AS Majors
-        FROM ENROLLMENT e
-        JOIN STUDENT s ON e.Student_ID = s.Student_ID
-        JOIN `USER` u ON s.Student_ID = u.User_ID
-        LEFT JOIN LOGIN l ON u.User_ID = l.User_ID
-        LEFT JOIN DEPARTMENT d ON s.Dept_ID = d.Department_ID
-        LEFT JOIN UNDERGRADUATE_STUDENT ug ON s.Student_ID = ug.Student_ID
-        LEFT JOIN GRADUATE_STUDENT g ON s.Student_ID = g.Student_ID
-        WHERE e.CRN = ?
-        ORDER BY u.User_LName ASC, u.User_FName ASC
-    ");
+    // Why: Authorization check ensuring faculty can only view rosters for sections assigned to them.
+    if ($faculty_id !== null && (int)$sec['Faculty_ID'] !== (int)$faculty_id) {
+        return null; // Unauthorized access
+    }
+
+    $isHistorical = ((int)$sec['Semester_ID'] < 202608);
+
+    if ($isHistorical) {
+        $stmt = $conn->prepare("
+            SELECT s.Student_ID,
+                   u.User_FName, u.User_MName, u.User_LName,
+                   l.User_Email,
+                   s.Student_Year, s.Student_Type,
+                   d.Department_Name,
+                   NULL AS Midterm_Grade,
+                   sh.Grade,
+                   COALESCE(ug.Undergrad_Type, g.Grad_Type, 'Full-Time') AS Attendance_Type,
+                   (SELECT GROUP_CONCAT(m.Major_Name SEPARATOR ', ')
+                    FROM STUDENT_MAJORS sm
+                    JOIN MAJORS m ON sm.Major_ID = m.Major_ID
+                    WHERE sm.Student_ID = s.Student_ID) AS Majors
+            FROM STUDENT_HISTORY sh
+            JOIN STUDENT s ON sh.Student_ID = s.Student_ID
+            JOIN `USER` u ON s.Student_ID = u.User_ID
+            LEFT JOIN LOGIN l ON u.User_ID = l.User_ID
+            LEFT JOIN DEPARTMENT d ON s.Dept_ID = d.Department_ID
+            LEFT JOIN UNDERGRADUATE_STUDENT ug ON s.Student_ID = ug.Student_ID
+            LEFT JOIN GRADUATE_STUDENT g ON s.Student_ID = g.Student_ID
+            WHERE sh.CRN = ?
+            ORDER BY u.User_LName ASC, u.User_FName ASC
+        ");
+    } else {
+        $stmt = $conn->prepare("
+            SELECT s.Student_ID,
+                   u.User_FName, u.User_MName, u.User_LName,
+                   l.User_Email,
+                   s.Student_Year, s.Student_Type,
+                   d.Department_Name,
+                   e.Midterm_Grade,
+                   e.Grade,
+                   COALESCE(ug.Undergrad_Type, g.Grad_Type, 'Full-Time') AS Attendance_Type,
+                   (SELECT GROUP_CONCAT(m.Major_Name SEPARATOR ', ')
+                    FROM STUDENT_MAJORS sm
+                    JOIN MAJORS m ON sm.Major_ID = m.Major_ID
+                    WHERE sm.Student_ID = s.Student_ID) AS Majors
+            FROM ENROLLMENT e
+            JOIN STUDENT s ON e.Student_ID = s.Student_ID
+            JOIN `USER` u ON s.Student_ID = u.User_ID
+            LEFT JOIN LOGIN l ON u.User_ID = l.User_ID
+            LEFT JOIN DEPARTMENT d ON s.Dept_ID = d.Department_ID
+            LEFT JOIN UNDERGRADUATE_STUDENT ug ON s.Student_ID = ug.Student_ID
+            LEFT JOIN GRADUATE_STUDENT g ON s.Student_ID = g.Student_ID
+            WHERE e.CRN = ?
+            ORDER BY u.User_LName ASC, u.User_FName ASC
+        ");
+    }
     $stmt->bind_param("i", $crn);
     $stmt->execute();
     $res = $stmt->get_result();
@@ -1128,6 +1267,7 @@ function getSectionRoster($conn, $crn, $faculty_id = null) {
         } else {
             $row['class_standing'] = $yearMap[$yearVal] ?? 'Undergraduate';
         }
+        $row['Major_Name'] = $row['Majors'] ?? 'Undeclared';
         $roster[] = $row;
     }
     $stmt->close();
@@ -1226,7 +1366,7 @@ function canViewerAccessStudentRecord($conn, $viewer_id, $viewer_type, $target_s
 
         // 2. Enrolled student check
         $secStmt = $conn->prepare("
-            SELECT 1 
+            SELECT 1
             FROM ENROLLMENT e
             JOIN COURSE_SECTIONS cs ON e.CRN = cs.CRN
             WHERE cs.Faculty_ID = ? AND e.Student_ID = ?
@@ -1297,7 +1437,7 @@ function checkAndEnforceFailedPrerequisites($conn, $student_id) {
                 SELECT Grade FROM (
                     SELECT Grade FROM STUDENT_HISTORY WHERE Student_ID = ? AND Course_ID = ?
                     UNION ALL
-                    SELECT Grade FROM ENROLLMENT e JOIN COURSE_SECTIONS cs ON e.CRN = cs.CRN 
+                    SELECT Grade FROM ENROLLMENT e JOIN COURSE_SECTIONS cs ON e.CRN = cs.CRN
                     WHERE e.Student_ID = ? AND cs.Course_ID = ? AND e.Grade IS NOT NULL
                 ) t
             ");
@@ -1384,6 +1524,7 @@ function renderAdminNavbar(mysqli $conn, int $admin_id, string $activeFile = '')
 
     $navItems = [
         'dashboard.php'              => 'Dashboard',
+        'master_schedule.php'        => 'Master Schedule',
         'create_user.php'            => 'Create User',
         'view_users.php'             => 'View Users',
         'create_course_section.php'  => 'Create Course Section',
@@ -1484,6 +1625,230 @@ function renderStudentNavbar(mysqli $conn, int $student_id, string $activeFile =
         </div>
     </nav>
 HTML;
+}
+
+/**
+ * Render unified Bootstrap 5.3 navigation bar for Faculty pages.
+ */
+function renderFacultyNavbar(mysqli $conn, int $faculty_id, string $activePage = 'dashboard.php'): string {
+    require_once __DIR__ . '/../profile_hover_card.php';
+
+    $isDashboard = ($activePage === 'dashboard.php');
+    $isProfile = ($activePage === 'user_profile.php');
+
+    $dashActiveClass = $isDashboard ? ' active' : '';
+    $dashAria = $isDashboard ? ' aria-current="page"' : '';
+
+    $profActiveClass = $isProfile ? ' active' : '';
+    $profAria = $isProfile ? ' aria-current="page"' : '';
+
+    $profileHtml = getUserNavbarProfileHtml($conn, $faculty_id, 'Faculty');
+    $escapedFacultyId = (int)$faculty_id;
+
+    return <<<HTML
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="dashboard.php">
+                Lucid University <span class="badge bg-warning text-dark ms-1">Faculty</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#facultyNav" aria-controls="facultyNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="facultyNav">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link{$dashActiveClass}"{$dashAria} href="dashboard.php">Dashboard &amp; Current Sections</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link{$profActiveClass}"{$profAria} href="../user_profile.php?user_id={$escapedFacultyId}">My Profile</a>
+                    </li>
+                </ul>
+                <div class="d-flex align-items-center gap-3">
+                    {$profileHtml}
+                    <form action="../logout.php" method="POST" class="m-0">
+                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </nav>
+HTML;
+}
+
+/**
+ * Check if the current time falls within the 72-hour grade submission window.
+ *
+ * @param string|null $targetDateStr DATE or DATETIME string from INFORMATION_RELATION
+ * @param int $hours Duration in hours (defaults to 72)
+ * @return bool
+ */
+function isWithinGradeWindow($targetDateStr, $hours = 72): bool {
+    if (empty($targetDateStr)) {
+        return false;
+    }
+    $datePart = substr(trim((string)$targetDateStr), 0, 10);
+    $startTs = strtotime($datePart . ' 00:00:00');
+    if ($startTs === false) {
+        return false;
+    }
+    $endTs = $startTs + ((int)$hours * 3600);
+    $now = time();
+    return ($now >= $startTs && $now <= $endTs);
+}
+
+/**
+ * Compute the average of a midterm grade and final exam grade on Lucid 4.0 scale.
+ *
+ * @param string|null $midtermGrade
+ * @param string|null $finalExamGrade
+ * @return string|null Closest standard letter grade
+ */
+function averageMidtermAndFinalGrade($midtermGrade, $finalExamGrade) {
+    $map = [
+        'A'  => 4.0,
+        'A-' => 3.7,
+        'B+' => 3.3,
+        'B'  => 3.0,
+        'B-' => 2.7,
+        'C+' => 2.3,
+        'C'  => 2.0,
+        'C-' => 1.7,
+        'D+' => 1.3,
+        'D'  => 1.0,
+        'F'  => 0.0,
+    ];
+
+    $midterm = !empty($midtermGrade) ? strtoupper(trim((string)$midtermGrade)) : null;
+    $final   = !empty($finalExamGrade) ? strtoupper(trim((string)$finalExamGrade)) : null;
+
+    if ($final === null || !array_key_exists($final, $map)) {
+        return $finalExamGrade;
+    }
+
+    if ($midterm === null || !array_key_exists($midterm, $map)) {
+        return $final;
+    }
+
+    $avgPts = ($map[$midterm] + $map[$final]) / 2.0;
+
+    // Closest standard letter grade (rounding ties upward)
+    if ($avgPts >= 3.85) {
+        return 'A';
+    } elseif ($avgPts >= 3.50) {
+        return 'A-';
+    } elseif ($avgPts >= 3.15) {
+        return 'B+';
+    } elseif ($avgPts >= 2.85) {
+        return 'B';
+    } elseif ($avgPts >= 2.50) {
+        return 'B-';
+    } elseif ($avgPts >= 2.15) {
+        return 'C+';
+    } elseif ($avgPts >= 1.85) {
+        return 'C';
+    } elseif ($avgPts >= 1.50) {
+        return 'C-';
+    } elseif ($avgPts >= 1.15) {
+        return 'D+';
+    } elseif ($avgPts >= 0.50) {
+        return 'D';
+    } else {
+        return 'F';
+    }
+}
+
+/**
+ * Retrieve scheduled class meeting dates and live session status for a course section.
+ *
+ * @param mysqli $conn
+ * @param int $crn
+ * @return array
+ */
+function getSectionMeetingDates($conn, $crn): array {
+    $crn = (int)$crn;
+    $stmt = $conn->prepare("
+        SELECT s.Start_Date, s.End_Date, p.Start_Time, p.End_Time, d.Weekday
+        FROM COURSE_SECTIONS cs
+        JOIN SEMESTER s ON cs.Semester_ID = s.Semester_ID
+        JOIN TIME_SLOT ts ON cs.Time_Slot_ID = ts.Time_Slot_ID
+        JOIN PERIOD p ON ts.Period_ID = p.Period_ID
+        JOIN TIME_SLOT_DAY tsd ON ts.Time_Slot_ID = tsd.Time_Slot_ID
+        JOIN DAY d ON tsd.Day_ID = d.Day_ID
+        WHERE cs.CRN = ?
+    ");
+    $stmt->bind_param("i", $crn);
+    $stmt->execute();
+    $res = $stmt->get_result();
+
+    $startDateStr = null;
+    $endDateStr = null;
+    $startTime = null;
+    $endTime = null;
+    $weekdays = [];
+
+    while ($row = $res->fetch_assoc()) {
+        $startDateStr = $row['Start_Date'];
+        $endDateStr = $row['End_Date'];
+        $startTime = $row['Start_Time'];
+        $endTime = $row['End_Time'];
+        $weekdays[] = ucfirst(strtolower(trim($row['Weekday'])));
+    }
+    $stmt->close();
+
+    $weekdays = array_unique($weekdays);
+
+    if (empty($startDateStr) || empty($endDateStr) || empty($weekdays)) {
+        return [
+            'dates'       => [],
+            'start_time'  => $startTime,
+            'end_time'    => $endTime,
+            'is_live_now' => false,
+        ];
+    }
+
+    $dates = [];
+    $today = date('Y-m-d');
+    $nowTime = date('H:i:s');
+    $isTodayInDates = false;
+
+    try {
+        $startDate = new DateTime($startDateStr);
+        $endDate = new DateTime($endDateStr);
+        $endDate->modify('+1 day'); // inclusive
+        $interval = new DateInterval('P1D');
+        $period = new DatePeriod($startDate, $interval, $endDate);
+
+        foreach ($period as $dt) {
+            $weekday = $dt->format('l'); // Monday, Tuesday, etc.
+            if (in_array($weekday, $weekdays, true)) {
+                $dateStr = $dt->format('Y-m-d');
+                if ($dateStr === $today) {
+                    $isTodayInDates = true;
+                }
+                $dates[] = [
+                    'date'    => $dateStr,
+                    'label'   => $dt->format('M/d (D)'),
+                    'weekday' => $weekday,
+                ];
+            }
+        }
+    } catch (Exception $e) {
+        // Fallback on date parse failure
+    }
+
+    $isLiveNow = false;
+    if ($isTodayInDates && !empty($startTime) && !empty($endTime)) {
+        if ($nowTime >= $startTime && $nowTime <= $endTime) {
+            $isLiveNow = true;
+        }
+    }
+
+    return [
+        'dates'       => $dates,
+        'start_time'  => $startTime,
+        'end_time'    => $endTime,
+        'is_live_now' => $isLiveNow,
+    ];
 }
 
 

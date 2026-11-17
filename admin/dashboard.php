@@ -5,6 +5,22 @@ require_once __DIR__ . '/../includes/academic_helpers.php';
 require_once '../profile_hover_card.php';
 
 $admin_id = (int)$userID;
+
+$advisingKpiStmt = $conn->prepare("
+    SELECT
+        COUNT(*) AS total_ft_faculty,
+        SUM(CASE WHEN COALESCE(ac.advisee_cnt, 0) < 15 THEN 1 ELSE 0 END) AS eligible_faculty_count,
+        SUM(CASE WHEN COALESCE(ac.advisee_cnt, 0) >= 15 THEN 1 ELSE 0 END) AS full_faculty_count
+    FROM FULL_TIME_FACULTY ft
+    LEFT JOIN (
+        SELECT Faculty_ID, COUNT(*) AS advisee_cnt
+        FROM ADVISOR_STUDENT
+        GROUP BY Faculty_ID
+    ) ac ON ft.Faculty_ID = ac.Faculty_ID
+");
+$advisingKpiStmt->execute();
+$stats = $advisingKpiStmt->get_result()->fetch_assoc();
+$advisingKpiStmt->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -68,6 +84,19 @@ $admin_id = (int)$userID;
                         </p>
                         <a href="view_users.php" class="btn btn-outline-secondary btn-sm mt-2">
                             View Directory &rarr;
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <h5 class="fw-bold text-dark mb-2">Master Course Schedule</h5>
+                        <p class="text-secondary small flex-grow-1">
+                            Browse catalog sections across past, current, and upcoming semesters with live seat counts, section statuses, faculty profiles, and student rosters.
+                        </p>
+                        <a href="master_schedule.php" class="btn btn-primary btn-sm mt-2">
+                            View Master Schedule &rarr;
                         </a>
                     </div>
                 </div>
@@ -140,9 +169,13 @@ $admin_id = (int)$userID;
             <div class="col-md-4">
                 <div class="card h-100 shadow-sm border-0">
                     <div class="card-body p-4 d-flex flex-column">
-                        <h5 class="fw-bold text-dark mb-2">Academic Advising</h5>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="fw-bold text-dark mb-0">Academic Advising</h5>
+
+                        </div>
                         <p class="text-secondary small flex-grow-1">
                             Inspect student advisor assignments, review faculty advisee rosters, verify advising capacities (max 15), and assign eligible full-time faculty.
+
                         </p>
                         <a href="manage_advisors.php" class="btn btn-outline-primary btn-sm mt-2">
                             Manage Advising &rarr;

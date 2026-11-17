@@ -18,6 +18,7 @@ try {
 
     $minor_id            = isset($_POST['minor_id']) ? (int)$_POST['minor_id'] : 0;
     $minor_name          = trim($_POST['minor_name'] ?? '');
+    $program_level       = trim($_POST['program_level'] ?? 'Undergraduate');
     $department_id       = isset($_POST['department_id']) ? (int)$_POST['department_id'] : 0;
     $no_credits_required = isset($_POST['no_credits_required']) ? (int)$_POST['no_credits_required'] : 0;
 
@@ -26,6 +27,9 @@ try {
     }
     if (empty($minor_name)) {
         throw new Exception("Minor Track Name cannot be blank.");
+    }
+    if (!in_array($program_level, ['Undergraduate', 'Graduate', 'Ph.D.'], true)) {
+        throw new Exception("Please select a valid program level (Undergraduate, Graduate, or Ph.D.).");
     }
     if ($department_id <= 0) {
         throw new Exception("Please select a valid academic department.");
@@ -67,10 +71,10 @@ try {
 
     // 5. Insert into MINORS
     $insStmt = $conn->prepare("
-        INSERT INTO MINORS (Minor_ID, Department_ID, Minor_Name, No_Credits_Required)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO MINORS (Minor_ID, Department_ID, Minor_Name, Program_Level, No_Credits_Required)
+        VALUES (?, ?, ?, ?, ?)
     ");
-    $insStmt->bind_param("iisi", $minor_id, $department_id, $minor_name, $no_credits_required);
+    $insStmt->bind_param("iissi", $minor_id, $department_id, $minor_name, $program_level, $no_credits_required);
     if (!$insStmt->execute()) {
         throw new Exception("Database insert failed: " . $insStmt->error);
     }

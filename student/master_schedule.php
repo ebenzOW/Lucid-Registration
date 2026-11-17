@@ -49,7 +49,7 @@ $filterSection    = (isset($_GET['section']) && trim($_GET['section']) !== '') ?
 $filterTimeSlot   = isset($_GET['time_slot_id']) ? filter_var($_GET['time_slot_id'], FILTER_VALIDATE_INT) : null;
 $filterInstructor = isset($_GET['instructor']) ? trim($_GET['instructor']) : '';
 $filterRoom       = isset($_GET['room']) ? trim($_GET['room']) : '';
-$filterCredits    = isset($_GET['credits']) ? (trim($_GET['credits']) !== '' ? filter_var($_GET['credits'], FILTER_VALIDATE_INT) : '') : 4;
+$filterCredits    = isset($_GET['credits']) ? (trim($_GET['credits']) !== '' ? filter_var($_GET['credits'], FILTER_VALIDATE_INT) : '') : '';
 $filterOpenOnly   = (!$is_past_sem && !empty($_GET['open_only']));
 
 $searchFilters = [
@@ -274,7 +274,7 @@ $hasActiveFilters = ($filterCrn || $filterDept || $filterSearch !== '' || $filte
                                         </td>
                                         <td><small class="text-muted"><?= htmlspecialchars($sec['Department_Name'] ?? 'General', ENT_QUOTES, 'UTF-8') ?></small></td>
                                         <td class="text-center fw-bold"><?= (int)$sec['Course_Credits'] ?></td>
-                                        <td><?= htmlspecialchars($sec['Instructor_Name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><?= renderFacultyLink($sec['Faculty_ID'] ?? 0, $sec['Instructor_Name'], '../') ?></td>
                                         <td><?= formatSchedule($sec['Time_Slot_Day'], $sec['Start_Time'], $sec['End_Time']) ?></td>
                                         <td><?= htmlspecialchars($sec['Building_Name'] . ' ' . $sec['Room_NO'], ENT_QUOTES, 'UTF-8') ?></td>
                                         <?php if (!$is_past_sem): ?>

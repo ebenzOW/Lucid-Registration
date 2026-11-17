@@ -27,11 +27,15 @@ try {
 
     if ($action === 'update_metadata') {
         $major_name          = trim($_POST['major_name'] ?? '');
+        $program_level       = trim($_POST['program_level'] ?? 'Undergraduate');
         $department_id       = isset($_POST['department_id']) ? (int)$_POST['department_id'] : 0;
         $no_credits_required = isset($_POST['no_credits_required']) ? (int)$_POST['no_credits_required'] : 0;
 
         if (empty($major_name)) {
             throw new Exception("Major program name cannot be empty.");
+        }
+        if (!in_array($program_level, ['Undergraduate', 'Graduate', 'Ph.D.'], true)) {
+            throw new Exception("Please select a valid program level (Undergraduate, Graduate, or Ph.D.).");
         }
         if ($department_id <= 0) {
             throw new Exception("Please select a valid academic department.");
@@ -53,10 +57,10 @@ try {
         // Update MAJORS
         $updStmt = $conn->prepare("
             UPDATE MAJORS 
-            SET Major_Name = ?, Department_ID = ?, No_Credits_Required = ?
+            SET Major_Name = ?, Program_Level = ?, Department_ID = ?, No_Credits_Required = ?
             WHERE Major_ID = ?
         ");
-        $updStmt->bind_param("siii", $major_name, $department_id, $no_credits_required, $major_id);
+        $updStmt->bind_param("ssiii", $major_name, $program_level, $department_id, $no_credits_required, $major_id);
         if (!$updStmt->execute()) {
             throw new Exception("Failed to update major attributes: " . $updStmt->error);
         }

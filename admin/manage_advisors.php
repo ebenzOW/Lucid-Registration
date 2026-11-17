@@ -276,6 +276,23 @@ if ($adviseesResult) {
     }
 }
 $adviseesStmt->close();
+
+// 5. Real-Time Advising KPI Stats
+$advisingKpiStmt = $conn->prepare("
+    SELECT
+        COUNT(*) AS total_ft_faculty,
+        SUM(CASE WHEN COALESCE(ac.advisee_cnt, 0) < 15 THEN 1 ELSE 0 END) AS eligible_faculty_count,
+        SUM(CASE WHEN COALESCE(ac.advisee_cnt, 0) >= 15 THEN 1 ELSE 0 END) AS full_faculty_count
+    FROM FULL_TIME_FACULTY ft
+    LEFT JOIN (
+        SELECT Faculty_ID, COUNT(*) AS advisee_cnt
+        FROM ADVISOR_STUDENT
+        GROUP BY Faculty_ID
+    ) ac ON ft.Faculty_ID = ac.Faculty_ID
+");
+$advisingKpiStmt->execute();
+$advisingStats = $advisingKpiStmt->get_result()->fetch_assoc();
+$advisingKpiStmt->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -365,8 +382,8 @@ $adviseesStmt->close();
                     <div class="col-sm-6 col-lg-3">
                         <div class="p-3 bg-light rounded-3 border">
                             <div class="text-secondary small fw-semibold text-uppercase">Eligible Faculty (Full-Time)</div>
-                            <div class="h3 fw-bold mb-0 text-primary"><?= $totalFullTimeFaculty ?></div>
-                            <div class="small text-muted"><?= $totalPartTimeFaculty ?> Part-Time (Ineligible per SRS)</div>
+                            <div class="h3 fw-bold mb-0 text-primary"><?= (int)$advisingStats['eligible_faculty_count'] ?></div>
+                            <div class="small text-muted">of <?= (int)$advisingStats['total_ft_faculty'] ?> Full-Time (<?= (int)$advisingStats['full_faculty_count'] ?> at 15/15 max capacity)</div>
                         </div>
                     </div>
                     <div class="col-sm-6 col-lg-3">

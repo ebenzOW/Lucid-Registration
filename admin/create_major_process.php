@@ -18,6 +18,7 @@ try {
 
     $major_id            = isset($_POST['major_id']) ? (int)$_POST['major_id'] : 0;
     $major_name          = trim($_POST['major_name'] ?? '');
+    $program_level       = trim($_POST['program_level'] ?? 'Undergraduate');
     $department_id       = isset($_POST['department_id']) ? (int)$_POST['department_id'] : 0;
     $no_credits_required = isset($_POST['no_credits_required']) ? (int)$_POST['no_credits_required'] : 0;
 
@@ -26,6 +27,9 @@ try {
     }
     if (empty($major_name)) {
         throw new Exception("Major Program Name cannot be blank.");
+    }
+    if (!in_array($program_level, ['Undergraduate', 'Graduate', 'Ph.D.'], true)) {
+        throw new Exception("Please select a valid program level (Undergraduate, Graduate, or Ph.D.).");
     }
     if ($department_id <= 0) {
         throw new Exception("Please select a valid academic department.");
@@ -67,10 +71,10 @@ try {
 
     // 5. Insert into MAJORS
     $insStmt = $conn->prepare("
-        INSERT INTO MAJORS (Major_ID, Department_ID, Major_Name, No_Credits_Required)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO MAJORS (Major_ID, Department_ID, Major_Name, Program_Level, No_Credits_Required)
+        VALUES (?, ?, ?, ?, ?)
     ");
-    $insStmt->bind_param("iisi", $major_id, $department_id, $major_name, $no_credits_required);
+    $insStmt->bind_param("iissi", $major_id, $department_id, $major_name, $program_level, $no_credits_required);
     if (!$insStmt->execute()) {
         throw new Exception("Database insert failed: " . $insStmt->error);
     }

@@ -24,7 +24,7 @@ if ($minor_id <= 0) {
 
 // 1. Fetch Minor
 $stmt = $conn->prepare("
-    SELECT mn.Minor_ID, mn.Minor_Name, mn.No_Credits_Required, mn.Department_ID, d.Department_Name
+    SELECT mn.Minor_ID, mn.Minor_Name, mn.Program_Level, mn.No_Credits_Required, mn.Department_ID, d.Department_Name
     FROM MINORS mn
     JOIN DEPARTMENT d ON mn.Department_ID = d.Department_ID
     WHERE mn.Minor_ID = ?
@@ -151,6 +151,20 @@ $canWrite = ((int)($_SESSION['Security_Level'] ?? 1) >= 2);
                                    value="<?= htmlspecialchars($minor['Minor_Name']) ?>" <?= $canWrite ? 'required' : 'readonly' ?> maxlength="100">
                         </div>
                         <div class="col-md-4">
+                            <label for="program_level" class="form-label fw-semibold">Program Level</label>
+                            <?php if ($canWrite): ?>
+                                <select class="form-select" id="program_level" name="program_level" required>
+                                    <?php foreach (['Undergraduate', 'Graduate', 'Ph.D.'] as $lvl): ?>
+                                        <option value="<?= $lvl ?>" <?= (($minor['Program_Level'] ?? 'Undergraduate') === $lvl) ? 'selected' : '' ?>>
+                                            <?= $lvl ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                            <?php else: ?>
+                                <input type="text" class="form-control" value="<?= htmlspecialchars($minor['Program_Level'] ?? 'Undergraduate') ?>" readonly>
+                            <?php endif; ?>
+                        </div>
+                        <div class="col-md-6">
                             <label for="department_id" class="form-label fw-semibold">Host Department</label>
                             <?php if ($canWrite): ?>
                                 <select class="form-select" id="department_id" name="department_id" required>
@@ -170,11 +184,11 @@ $canWrite = ((int)($_SESSION['Security_Level'] ?? 1) >= 2);
                                    value="<?= (int)$minor['No_Credits_Required'] ?>" <?= $canWrite ? 'required min="1"' : 'readonly' ?>>
                             <div class="form-text small">Statutory minor credit requirement (typically 15 to 20 credits).</div>
                         </div>
-                        <div class="col-md-6 d-flex align-items-end">
+                        <div class="col-md-12 d-flex justify-content-end mt-3">
                             <?php if ($canWrite): ?>
-                                <button type="submit" class="btn btn-success w-100 fw-semibold">Save Minor Attributes</button>
+                                <button type="submit" class="btn btn-success px-4 fw-semibold">Save Minor Attributes</button>
                             <?php else: ?>
-                                <button type="button" class="btn btn-secondary w-100" disabled>Read-Only Access</button>
+                                <button type="button" class="btn btn-secondary px-4" disabled>Read-Only Access</button>
                             <?php endif; ?>
                         </div>
                     </div>
