@@ -22,7 +22,7 @@ $adminNavHtml = getUserNavbarProfileHtml($conn, $admin_id, 'Admin');
 
     <!-- Unified Admin Top Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
-        <div class="container">
+        <div class="container-fluid px-lg-5">
             <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University <span class="badge bg-danger ms-1">Admin</span></a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNav" aria-controls="adminNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
@@ -48,7 +48,13 @@ $adminNavHtml = getUserNavbarProfileHtml($conn, $admin_id, 'Admin');
                         <a class="nav-link" href="manage_holds.php">Manage Holds</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="manage_facilities.php">Manage Facilities</a>
+                        <a class="nav-link" href="semesters.php">Semesters</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="majors_minors.php">Majors &amp; Minors</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="manage_advisors.php">Advisors</a>
                     </li>
                 </ul>
                 <div class="d-flex align-items-center gap-3">
@@ -61,7 +67,7 @@ $adminNavHtml = getUserNavbarProfileHtml($conn, $admin_id, 'Admin');
         </div>
     </nav>
 
-    <div class="container mb-5">
+    <div class="container-fluid px-lg-5 mb-5">
 
         <!-- Welcome Banner Card -->
         <div class="card shadow-sm mb-4 border-0">
@@ -153,12 +159,38 @@ $adminNavHtml = getUserNavbarProfileHtml($conn, $admin_id, 'Admin');
             <div class="col-md-4">
                 <div class="card h-100 shadow-sm border-0">
                     <div class="card-body p-4 d-flex flex-column">
-                        <h5 class="fw-bold text-dark mb-2">Manage Campus Facilities</h5>
+                        <h5 class="fw-bold text-dark mb-2">Semesters &amp; Deadlines</h5>
                         <p class="text-secondary small flex-grow-1">
-                            View, create, and edit buildings, rooms, labs, offices, and lecture spaces with availability checks.
+                            View and manage academic terms, start and end dates, registration windows, add/drop deadlines, and grade submission timelines.
                         </p>
-                        <a href="manage_facilities.php" class="btn btn-outline-primary btn-sm mt-2">
-                            Manage Facilities &rarr;
+                        <a href="semesters.php" class="btn btn-outline-primary btn-sm mt-2">
+                            Manage Semesters &rarr;
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <h5 class="fw-bold text-dark mb-2">Majors &amp; Minors</h5>
+                        <p class="text-secondary small flex-grow-1">
+                            Review and configure degree majors, academic minors, required completion credits, and curriculum course requirements.
+                        </p>
+                        <a href="majors_minors.php" class="btn btn-outline-primary btn-sm mt-2">
+                            Manage Majors &amp; Minors &rarr;
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <h5 class="fw-bold text-dark mb-2">Academic Advising</h5>
+                        <p class="text-secondary small flex-grow-1">
+                            Inspect student advisor assignments, review faculty advisee rosters, verify advising capacities (max 15), and assign eligible full-time faculty.
+                        </p>
+                        <a href="manage_advisors.php" class="btn btn-outline-primary btn-sm mt-2">
+                            Manage Advising &rarr;
                         </a>
                     </div>
                 </div>
