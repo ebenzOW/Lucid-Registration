@@ -49,7 +49,7 @@ $filterSection    = (isset($_GET['section']) && trim($_GET['section']) !== '') ?
 $filterTimeSlot   = isset($_GET['time_slot_id']) ? filter_var($_GET['time_slot_id'], FILTER_VALIDATE_INT) : null;
 $filterInstructor = isset($_GET['instructor']) ? trim($_GET['instructor']) : '';
 $filterRoom       = isset($_GET['room']) ? trim($_GET['room']) : '';
-$filterCredits    = isset($_GET['credits']) ? (trim($_GET['credits']) !== '' ? filter_var($_GET['credits'], FILTER_VALIDATE_INT) : '') : 4;
+$filterCredits    = isset($_GET['credits']) ? (trim($_GET['credits']) !== '' ? filter_var($_GET['credits'], FILTER_VALIDATE_INT) : '') : '';
 $filterOpenOnly   = (!$is_past_sem && !empty($_GET['open_only']));
 
 $searchFilters = [
@@ -94,45 +94,7 @@ $hasActiveFilters = ($filterCrn || $filterDept || $filterSearch !== '' || $filte
 <body class="bg-light">
 
     <!-- Unified Student Top Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#studentNav" aria-controls="studentNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="studentNav">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link" href="dashboard.php">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="schedule.php">My Schedule</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="master_schedule.php">Master Schedule</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="register.php">Register / Add-Drop</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="transcript.php">Transcript</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="degree_audit.php">Degree Audit</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="holds.php">Holds</a>
-                    </li>
-                </ul>
-                <div class="d-flex align-items-center gap-3">
-                    <?= getUserNavbarProfileHtml($conn, $student_id, 'Student') ?>
-                    <form action="../logout.php" method="POST" class="m-0">
-                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <?= renderStudentNavbar($conn, $student_id, 'master_schedule.php') ?>
 
     <div class="container mb-5">
 
@@ -312,7 +274,7 @@ $hasActiveFilters = ($filterCrn || $filterDept || $filterSearch !== '' || $filte
                                         </td>
                                         <td><small class="text-muted"><?= htmlspecialchars($sec['Department_Name'] ?? 'General', ENT_QUOTES, 'UTF-8') ?></small></td>
                                         <td class="text-center fw-bold"><?= (int)$sec['Course_Credits'] ?></td>
-                                        <td><?= htmlspecialchars($sec['Instructor_Name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><?= renderFacultyLink($sec['Faculty_ID'] ?? 0, $sec['Instructor_Name'], '../') ?></td>
                                         <td><?= formatSchedule($sec['Time_Slot_Day'], $sec['Start_Time'], $sec['End_Time']) ?></td>
                                         <td><?= htmlspecialchars($sec['Building_Name'] . ' ' . $sec['Room_NO'], ENT_QUOTES, 'UTF-8') ?></td>
                                         <?php if (!$is_past_sem): ?>

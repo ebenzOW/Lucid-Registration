@@ -3,72 +3,54 @@
  * Lucid University Course Registration System
  * Admin Campus Facilities Management
  *
- * The companion manage_facilities_process.php handles availability and changes.
+ * Implements building & room management, room subtype synchronization,
+ * capacity viewing, and role-based permissions (Security Level >= 2 for write access).
  */
+
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
+require_once __DIR__ . '/../includes/academic_helpers.php';
 require_once '../profile_hover_card.php';
 
-$admin_id = (int)$userID;
-// Security Level 1 is the highest privilege; Levels 2–4 can view only.
-$can_write = ((int)($_SESSION['Security_Level'] ?? 4) === 1);
-
-if (empty($_SESSION['facilities_csrf'])) {
-    $_SESSION['facilities_csrf'] = bin2hex(random_bytes(32));
-}
-if (empty($_SESSION['facilities_check_secret'])) {
-    $_SESSION['facilities_check_secret'] = bin2hex(random_bytes(32));
-}
+$admin_id  = (int)$userID;
+$can_write = ((int)($_SESSION['Security_Level'] ?? 1) >= 2);
 
 $successMessage = $_SESSION['success_message'] ?? null;
-$errorMessage = $_SESSION['error_message'] ?? null;
+$errorMessage   = $_SESSION['error_message'] ?? null;
 unset($_SESSION['success_message'], $_SESSION['error_message']);
 
-function facilitiesEsc($value): string {
-    return htmlspecialchars((string)($value ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-}
+// Fetch Buildings with Room Counts
+$bStmt = $conn->prepare("
+    SELECT b.Building_ID, b.Building_Name, b.Usage_Purpose, COUNT(r.Room_ID) AS Room_Count
+    FROM BUILDING b
+    LEFT JOIN ROOM r ON b.Building_ID = r.Building_ID
+    GROUP BY b.Building_ID, b.Building_Name, b.Usage_Purpose
+    ORDER BY b.Building_Name ASC, b.Building_ID ASC
+");
+$bStmt->execute();
+$buildings = $bStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$bStmt->close();
 
-// Display page only: all availability checks and writes use manage_facilities_process.php.
+// Fetch Rooms with Subtype Capacities
+$rStmt = $conn->prepare("
+    SELECT r.Room_ID, r.Building_ID, r.Room_NO, r.Room_Type, b.Building_Name,
+           COALESCE(lec.Lecture_Seats, l.Lab_Stations, o.Office_Desks, 0) AS Capacity
+    FROM ROOM r
+    JOIN BUILDING b ON r.Building_ID = b.Building_ID
+    LEFT JOIN LECTURE lec ON r.Room_ID = lec.Lecture_ID
+    LEFT JOIN LAB l ON r.Room_ID = l.Lab_ID
+    LEFT JOIN OFFICE o ON r.Room_ID = o.Office_ID
+    ORDER BY b.Building_Name ASC, r.Room_NO ASC
+");
+$rStmt->execute();
+$rooms = $rStmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$rStmt->close();
 
-// Load buildings, including those that contain zero rooms. One building may
-// contain any number of different rooms (ROOM.Building_ID is a foreign key).
-$buildings = [];
-$rooms = [];
-$readError = '';
-try {
-    $stmt = $conn->prepare(
-        'SELECT b.Building_ID, b.Building_Name, b.Usage_Purpose, COUNT(r.Room_ID) AS Room_Count '
-        . 'FROM BUILDING b LEFT JOIN ROOM r ON r.Building_ID = b.Building_ID '
-        . 'GROUP BY b.Building_ID, b.Building_Name, b.Usage_Purpose '
-        . 'ORDER BY b.Building_Name, b.Building_ID'
-    );
-    $stmt->execute();
-    $buildings = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-
-    $stmt = $conn->prepare(
-        'SELECT r.Room_ID, r.Building_ID, r.Room_NO, r.Room_Type, b.Building_Name, '
-        . 'o.Office_Desks, l.Lab_Stations, lec.Lecture_Seats '
-        . 'FROM ROOM r '
-        . 'JOIN BUILDING b ON r.Building_ID = b.Building_ID '
-        . 'LEFT JOIN OFFICE o ON r.Room_ID = o.Office_ID '
-        . 'LEFT JOIN LAB l ON r.Room_ID = l.Lab_ID '
-        . 'LEFT JOIN LECTURE lec ON r.Room_ID = lec.Lecture_ID '
-        . 'ORDER BY b.Building_Name, r.Room_NO, r.Room_ID'
-    );
-    $stmt->execute();
-    $rooms = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-} catch (Throwable $error) {
-    error_log('manage_facilities.php read error: ' . $error->getMessage());
-    $readError = 'Unable to load facilities using the existing database connection.';
-}
-
-$roomCounts = ['Lecture' => 0, 'Lab' => 0, 'Office' => 0];
-foreach ($rooms as $room) {
-    $type = ucfirst(strtolower((string)$room['Room_Type']));
-    if (isset($roomCounts[$type])) {
-        ++$roomCounts[$type];
+$counts = ['Lecture' => 0, 'Lab' => 0, 'Office' => 0];
+foreach ($rooms as $r) {
+    $t = ucfirst(strtolower((string)$r['Room_Type']));
+    if (isset($counts[$t])) {
+        $counts[$t]++;
     }
 }
 ?>
@@ -77,407 +59,566 @@ foreach ($rooms as $room) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Manage Facilities | Lucid University Admin</title>
+    <title>Campus Facilities | Lucid University Admin</title>
+    <!-- Minimal Clean Bootstrap 5.3 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        <?= getProfileHoverCardStyles() ?>
+        .badge-lecture { background-color: #0d6efd; color: #fff; }
+        .badge-lab { background-color: #fd7e14; color: #fff; }
+        .badge-office { background-color: #6c757d; color: #fff; }
+    </style>
 </head>
-<body>
-    <header>
-        <nav aria-label="Administrator navigation">
-            <a href="dashboard.php">Lucid University Admin</a>
-            <a href="dashboard.php">Dashboard</a>
-            <a href="create_user.php">Create User</a>
-            <a href="view_users.php">View Users</a>
-            <a href="create_course_section.php">Create Course Section</a>
-            <a href="manage_courses.php">Manage Courses</a>
-            <a href="manage_holds.php">Manage Holds</a>
-            <a href="manage_facilities.php" aria-current="page">Manage Facilities</a>
-            <?= getUserNavbarProfileHtml($conn, $admin_id, 'Admin') ?>
-            <form action="../logout.php" method="POST"><button type="submit">Log Out</button></form>
-        </nav>
-    </header>
+<body class="bg-light">
 
-    <main>
-        <?php if ($successMessage): ?>
-            <p role="status"><strong>Success:</strong> <?= facilitiesEsc($successMessage) ?></p>
+    <?= renderAdminNavbar($conn, $admin_id, basename($_SERVER['PHP_SELF'])) ?>
+
+    <div class="container-fluid px-lg-5 mb-5">
+
+        <!-- Page Header -->
+        <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+            <div>
+                <h2 class="fw-bold mb-1">Campus Facilities Management</h2>
+                <div class="text-secondary">
+                    Configure campus buildings, instructional classrooms, computer laboratories, and faculty offices.
+                </div>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <?php if ($can_write): ?>
+                    <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addBuildingModal">
+                        + Add Building
+                    </button>
+                    <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addRoomModal" <?= empty($buildings) ? 'disabled' : '' ?>>
+                        + Add Room
+                    </button>
+                <?php else: ?>
+                    <span class="badge bg-secondary-subtle text-secondary border px-3 py-2">
+                        <i class="bi bi-eye"></i> Read-Only (Security Level 1)
+                    </span>
+                <?php endif; ?>
+                <a href="dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Dashboard</a>
+            </div>
+        </div>
+
+        <!-- Flash Message Alerts -->
+        <?php if (!empty($successMessage)): ?>
+            <div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
+                <strong>Success:</strong> <?= htmlspecialchars($successMessage, ENT_QUOTES, 'UTF-8') ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
         <?php endif; ?>
-        <?php if ($errorMessage): ?>
-            <p role="alert"><strong>Error:</strong> <?= facilitiesEsc($errorMessage) ?></p>
-        <?php endif; ?>
-        <?php if ($readError): ?>
-            <p role="alert"><?= facilitiesEsc($readError) ?></p>
+        <?php if (!empty($errorMessage)): ?>
+            <div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
+                <strong>Error:</strong> <?= htmlspecialchars($errorMessage, ENT_QUOTES, 'UTF-8') ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
         <?php endif; ?>
 
-        <h1>Campus Facilities Management</h1>
-        <p>View and update buildings and their lecture rooms, labs, and offices.</p>
-        <?php if ($can_write && !$readError): ?>
-            <p>
-                <button type="button" id="createBuildingButton">New Building</button>
-                <button type="button" id="createRoomButton" <?= !$buildings ? 'disabled' : '' ?>>New Room</button>
-            </p>
-        <?php elseif (!$can_write): ?>
-            <p>Read-only access (Security Levels 2–4).</p>
-        <?php endif; ?>
-        <p><a href="dashboard.php">Back to Dashboard</a></p>
+        <!-- KPI Metric Summary Cards -->
+        <div class="row g-3 mb-4">
+            <div class="col-6 col-md-2">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-body p-3">
+                        <div class="text-uppercase text-secondary small fw-bold">Buildings</div>
+                        <div class="fs-3 fw-bold text-dark mt-1"><?= count($buildings) ?></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-2">
+                <div class="card shadow-sm border-0 h-100">
+                    <div class="card-body p-3">
+                        <div class="text-uppercase text-secondary small fw-bold">Total Rooms</div>
+                        <div class="fs-3 fw-bold text-dark mt-1"><?= count($rooms) ?></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-4 col-md-2">
+                <div class="card shadow-sm border-0 h-100 border-start border-primary border-4">
+                    <div class="card-body p-3">
+                        <div class="text-uppercase text-primary small fw-bold">Lecture Halls</div>
+                        <div class="fs-3 fw-bold text-primary mt-1"><?= $counts['Lecture'] ?></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-4 col-md-3">
+                <div class="card shadow-sm border-0 h-100 border-start border-warning border-4">
+                    <div class="card-body p-3">
+                        <div class="text-uppercase text-warning-emphasis small fw-bold">Laboratories</div>
+                        <div class="fs-3 fw-bold text-dark mt-1"><?= $counts['Lab'] ?></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-4 col-md-3">
+                <div class="card shadow-sm border-0 h-100 border-start border-secondary border-4">
+                    <div class="card-body p-3">
+                        <div class="text-uppercase text-secondary small fw-bold">Faculty Offices</div>
+                        <div class="fs-3 fw-bold text-secondary mt-1"><?= $counts['Office'] ?></div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-        <section aria-labelledby="summaryTitle">
-            <h2 id="summaryTitle">Overview</h2>
-            <p>
-                Buildings: <?= count($buildings) ?> |
-                Total rooms: <?= count($rooms) ?> |
-                Lecture rooms: <?= $roomCounts['Lecture'] ?> |
-                Labs: <?= $roomCounts['Lab'] ?> |
-                Offices: <?= $roomCounts['Office'] ?>
-            </p>
-        </section>
+        <!-- Filter & Search Bar -->
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-body p-3">
+                <div class="row g-2 align-items-center">
+                    <div class="col-md-5">
+                        <input type="search" id="facilitySearch" class="form-control form-control-sm" placeholder="Search buildings, rooms, or purpose...">
+                    </div>
+                    <div class="col-md-4">
+                        <select id="buildingFilter" class="form-select form-select-sm">
+                            <option value="">All Buildings</option>
+                            <?php foreach ($buildings as $b): ?>
+                                <option value="<?= htmlspecialchars($b['Building_ID'], ENT_QUOTES, 'UTF-8') ?>">
+                                    <?= htmlspecialchars($b['Building_Name'] . ' (' . $b['Building_ID'] . ')', ENT_QUOTES, 'UTF-8') ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select id="roomTypeFilter" class="form-select form-select-sm">
+                            <option value="">All Room Types</option>
+                            <option value="Lecture">Lecture Hall</option>
+                            <option value="Lab">Laboratory</option>
+                            <option value="Office">Office</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-        <section aria-labelledby="buildingsTitle">
-            <h2 id="buildingsTitle">Buildings (<?= count($buildings) ?>)</h2>
-            <label for="buildingSearch">Search buildings</label>
-            <input id="buildingSearch" type="search" placeholder="Search buildings...">
-            <table id="buildingsTable">
-                <thead>
-                    <tr>
-                        <th scope="col">Building ID</th>
-                        <th scope="col">Building Name</th>
-                        <th scope="col">Usage Purpose</th>
-                        <th scope="col">Number of Rooms</th>
-                        <?php if ($can_write): ?><th scope="col">Actions</th><?php endif; ?>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($buildings as $building): ?>
-                        <tr data-search="<?= facilitiesEsc(strtolower(implode(' ', [$building['Building_ID'], $building['Building_Name'], $building['Usage_Purpose']]))) ?>">
-                            <td><?= facilitiesEsc($building['Building_ID']) ?></td>
-                            <td><?= facilitiesEsc($building['Building_Name']) ?></td>
-                            <td><?= facilitiesEsc($building['Usage_Purpose'] ?: '—') ?></td>
-                            <td><?= (int)$building['Room_Count'] ?></td>
-                            <?php if ($can_write): ?>
-                                <td>
-                                    <button type="button" class="edit-building"
-                                        data-id="<?= facilitiesEsc($building['Building_ID']) ?>"
-                                        data-name="<?= facilitiesEsc($building['Building_Name']) ?>"
-                                        data-purpose="<?= facilitiesEsc($building['Usage_Purpose']) ?>">Edit</button>
-                                </td>
+        <!-- Buildings Card & Table -->
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                <h5 class="fw-bold mb-0">Campus Buildings (<?= count($buildings) ?>)</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" id="buildingsTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 15%;">Building ID</th>
+                                <th style="width: 30%;">Building Name</th>
+                                <th style="width: 35%;">Usage Purpose</th>
+                                <th style="width: 10%;" class="text-center">Rooms</th>
+                                <?php if ($can_write): ?>
+                                    <th style="width: 10%;" class="text-end pe-4">Actions</th>
+                                <?php endif; ?>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($buildings)): ?>
+                                <tr>
+                                    <td colspan="<?= $can_write ? 5 : 4 ?>" class="text-center py-4 text-secondary">
+                                        No campus buildings found.
+                                    </td>
+                                </tr>
+                            <?php else: ?>
+                                <?php foreach ($buildings as $b): ?>
+                                    <tr class="building-row"
+                                        data-building-id="<?= htmlspecialchars(strtolower($b['Building_ID']), ENT_QUOTES, 'UTF-8') ?>"
+                                        data-building-name="<?= htmlspecialchars(strtolower($b['Building_Name']), ENT_QUOTES, 'UTF-8') ?>"
+                                        data-purpose="<?= htmlspecialchars(strtolower($b['Usage_Purpose'] ?? ''), ENT_QUOTES, 'UTF-8') ?>">
+                                        <td class="fw-bold font-monospace text-primary">
+                                            <?= htmlspecialchars($b['Building_ID'], ENT_QUOTES, 'UTF-8') ?>
+                                        </td>
+                                        <td class="fw-semibold">
+                                            <?= htmlspecialchars($b['Building_Name'], ENT_QUOTES, 'UTF-8') ?>
+                                        </td>
+                                        <td class="text-secondary small">
+                                            <?= htmlspecialchars($b['Usage_Purpose'] ?? 'N/A', ENT_QUOTES, 'UTF-8') ?>
+                                        </td>
+                                        <td class="text-center">
+                                            <span class="badge bg-secondary-subtle text-secondary border">
+                                                <?= (int)$b['Room_Count'] ?> room<?= (int)$b['Room_Count'] === 1 ? '' : 's' ?>
+                                            </span>
+                                        </td>
+                                        <?php if ($can_write): ?>
+                                            <td class="text-end pe-4">
+                                                <button type="button" class="btn btn-outline-primary btn-sm btn-edit-building"
+                                                    data-id="<?= htmlspecialchars($b['Building_ID'], ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-name="<?= htmlspecialchars($b['Building_Name'], ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-purpose="<?= htmlspecialchars($b['Usage_Purpose'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                                                    Edit
+                                                </button>
+                                            </td>
+                                        <?php endif; ?>
+                                    </tr>
+                                <?php endforeach; ?>
                             <?php endif; ?>
-                        </tr>
-                    <?php endforeach; ?>
-                    <?php if (!$buildings): ?>
-                        <tr><td colspan="<?= $can_write ? 5 : 4 ?>">No buildings have been registered.</td></tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-        </section>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
 
-        <section aria-labelledby="roomsTitle">
-            <h2 id="roomsTitle">Rooms, Labs, Offices, and Lecture Rooms</h2>
-            <p>A building may contain multiple rooms of different types.</p>
-            <label for="roomSearch">Search rooms</label>
-            <input id="roomSearch" type="search" placeholder="Search rooms...">
-            <label for="buildingFilter">Building</label>
-            <select id="buildingFilter">
-                <option value="">All buildings</option>
-                <?php foreach ($buildings as $building): ?>
-                    <option value="<?= facilitiesEsc($building['Building_ID']) ?>"><?= facilitiesEsc($building['Building_Name']) ?></option>
-                <?php endforeach; ?>
-            </select>
-            <label for="roomTypeFilter">Room type</label>
-            <select id="roomTypeFilter">
-                <option value="">All room types</option>
-                <option value="Lecture">Lecture</option>
-                <option value="Lab">Lab</option>
-                <option value="Office">Office</option>
-            </select>
-
-            <table id="roomsTable">
-                <thead>
-                    <tr>
-                        <th scope="col">Room ID</th>
-                        <th scope="col">Building</th>
-                        <th scope="col">Room Number</th>
-                        <th scope="col">Room Type</th>
-                        <th scope="col">Desks / Stations / Seats</th>
-                        <?php if ($can_write): ?><th scope="col">Actions</th><?php endif; ?>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($rooms as $room):
-                        $type = ucfirst(strtolower((string)$room['Room_Type']));
-                        $capacity = $type === 'Office' ? $room['Office_Desks'] : ($type === 'Lab' ? $room['Lab_Stations'] : ($type === 'Lecture' ? $room['Lecture_Seats'] : null));
-                    ?>
-                        <tr data-building="<?= facilitiesEsc($room['Building_ID']) ?>"
-                            data-type="<?= facilitiesEsc($type) ?>"
-                            data-search="<?= facilitiesEsc(strtolower(implode(' ', [$room['Room_ID'], $room['Room_NO'], $room['Room_Type'], $room['Building_Name'], $room['Building_ID']]))) ?>">
-                            <td><?= facilitiesEsc($room['Room_ID']) ?></td>
-                            <td><?= facilitiesEsc($room['Building_Name']) ?> (<?= facilitiesEsc($room['Building_ID']) ?>)</td>
-                            <td><?= facilitiesEsc($room['Room_NO']) ?></td>
-                            <td><?= facilitiesEsc($type) ?></td>
-                            <td><?= $capacity === null ? '—' : (int)$capacity ?></td>
-                            <?php if ($can_write): ?>
-                                <td>
-                                    <button type="button" class="edit-room"
-                                        data-id="<?= facilitiesEsc($room['Room_ID']) ?>"
-                                        data-building="<?= facilitiesEsc($room['Building_ID']) ?>"
-                                        data-number="<?= facilitiesEsc($room['Room_NO']) ?>"
-                                        data-type="<?= facilitiesEsc($type) ?>"
-                                        data-capacity="<?= facilitiesEsc($capacity) ?>">Edit</button>
-                                </td>
+        <!-- Rooms Card & Table -->
+        <div class="card shadow-sm border-0">
+            <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                <h5 class="fw-bold mb-0">Classrooms, Labs &amp; Offices (<?= count($rooms) ?>)</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0" id="roomsTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 15%;">Room ID</th>
+                                <th style="width: 25%;">Building</th>
+                                <th style="width: 15%;">Room No</th>
+                                <th style="width: 15%;">Room Type</th>
+                                <th style="width: 18%;">Capacity</th>
+                                <?php if ($can_write): ?>
+                                    <th style="width: 12%;" class="text-end pe-4">Actions</th>
+                                <?php endif; ?>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($rooms)): ?>
+                                <tr>
+                                    <td colspan="<?= $can_write ? 6 : 5 ?>" class="text-center py-4 text-secondary">
+                                        No rooms configured.
+                                    </td>
+                                </tr>
+                            <?php else: ?>
+                                <?php foreach ($rooms as $r): 
+                                    $rType = ucfirst(strtolower((string)$r['Room_Type']));
+                                    $badgeClass = match ($rType) {
+                                        'Lecture' => 'badge-lecture',
+                                        'Lab'     => 'badge-lab',
+                                        'Office'  => 'badge-office',
+                                        default   => 'bg-secondary',
+                                    };
+                                    $unitLabel = match ($rType) {
+                                        'Lecture' => 'seats',
+                                        'Lab'     => 'stations',
+                                        'Office'  => 'desks',
+                                        default   => 'capacity',
+                                    };
+                                ?>
+                                    <tr class="room-row"
+                                        data-room-id="<?= htmlspecialchars(strtolower($r['Room_ID']), ENT_QUOTES, 'UTF-8') ?>"
+                                        data-building-id="<?= htmlspecialchars($r['Building_ID'], ENT_QUOTES, 'UTF-8') ?>"
+                                        data-building-name="<?= htmlspecialchars(strtolower($r['Building_Name']), ENT_QUOTES, 'UTF-8') ?>"
+                                        data-room-no="<?= htmlspecialchars(strtolower($r['Room_NO']), ENT_QUOTES, 'UTF-8') ?>"
+                                        data-room-type="<?= htmlspecialchars($rType, ENT_QUOTES, 'UTF-8') ?>">
+                                        <td class="fw-bold font-monospace text-dark">
+                                            <?= htmlspecialchars($r['Room_ID'], ENT_QUOTES, 'UTF-8') ?>
+                                        </td>
+                                        <td>
+                                            <span class="fw-semibold"><?= htmlspecialchars($r['Building_Name'], ENT_QUOTES, 'UTF-8') ?></span>
+                                            <span class="text-secondary small font-monospace">(<?= htmlspecialchars($r['Building_ID'], ENT_QUOTES, 'UTF-8') ?>)</span>
+                                        </td>
+                                        <td>
+                                            <?= htmlspecialchars($r['Room_NO'], ENT_QUOTES, 'UTF-8') ?>
+                                        </td>
+                                        <td>
+                                            <span class="badge <?= $badgeClass ?> px-2 py-1">
+                                                <?= htmlspecialchars($rType, ENT_QUOTES, 'UTF-8') ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span class="fw-bold"><?= (int)$r['Capacity'] ?></span>
+                                            <span class="text-secondary small"><?= $unitLabel ?></span>
+                                        </td>
+                                        <?php if ($can_write): ?>
+                                            <td class="text-end pe-4">
+                                                <button type="button" class="btn btn-outline-primary btn-sm btn-edit-room"
+                                                    data-id="<?= htmlspecialchars($r['Room_ID'], ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-building="<?= htmlspecialchars($r['Building_ID'], ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-roomno="<?= htmlspecialchars($r['Room_NO'], ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-type="<?= htmlspecialchars($rType, ENT_QUOTES, 'UTF-8') ?>"
+                                                    data-capacity="<?= (int)$r['Capacity'] ?>">
+                                                    Edit
+                                                </button>
+                                            </td>
+                                        <?php endif; ?>
+                                    </tr>
+                                <?php endforeach; ?>
                             <?php endif; ?>
-                        </tr>
-                    <?php endforeach; ?>
-                    <?php if (!$rooms): ?>
-                        <tr><td colspan="<?= $can_write ? 6 : 5 ?>">No rooms have been registered.</td></tr>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-            <p><span id="visibleRoomsCount"><?= count($rooms) ?></span> room(s) shown</p>
-        </section>
-    </main>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
 
-    <?php if ($can_write && !$readError): ?>
-    <dialog id="facilityModal" aria-labelledby="facilityModalTitle">
-        <form id="facilityForm" autocomplete="off">
-            <h2 id="facilityModalTitle">Add Facility</h2>
-            <p>Complete the fields, click <strong>Check Availability</strong>, and then click <strong>Submit</strong>. Changes require a new check.</p>
-            <p id="facilityFormMessage" role="status" hidden></p>
-            <input type="hidden" name="csrf" value="<?= facilitiesEsc($_SESSION['facilities_csrf']) ?>">
-            <input type="hidden" name="entity" id="entityInput" value="building">
-            <input type="hidden" name="operation" id="operationInput" value="create">
-            <input type="hidden" name="ticket" id="ticketInput" value="">
+    </div>
 
-            <section id="buildingFields">
-                <h3>Building Details</h3>
-                <p>
-                    <label for="buildingId">Building ID *</label>
-                    <input name="building_id" id="buildingId" maxlength="10" placeholder="e.g. SCI" required>
-                    <small>Unique building ID; cannot be changed later.</small>
-                </p>
-                <p>
-                    <label for="buildingName">Building Name *</label>
-                    <input name="building_name" id="buildingName" maxlength="100" placeholder="e.g. Science Center" required>
-                </p>
-                <p>
-                    <label for="usagePurpose">Usage Purpose</label>
-                    <input name="usage_purpose" id="usagePurpose" maxlength="100" placeholder="e.g. Science education and research">
-                </p>
-            </section>
+    <?php if ($can_write): ?>
+        <!-- Modal: Add Building -->
+        <div class="modal fade" id="addBuildingModal" tabindex="-1" aria-labelledby="addBuildingModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <form action="manage_facilities_process.php" method="POST" class="modal-content shadow">
+                    <input type="hidden" name="action" value="create_building">
+                    <div class="modal-header">
+                        <h5 class="modal-title fw-bold" id="addBuildingModalLabel">Add Campus Building</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="b_id" class="form-label small fw-bold">Building Code / ID <span class="text-danger">*</span></label>
+                            <input type="text" name="building_id" id="b_id" class="form-control text-uppercase" maxlength="10" placeholder="e.g. SCI, ARTS, LIB" required>
+                            <div class="form-text small">1 to 10 uppercase characters or hyphens.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="b_name" class="form-label small fw-bold">Building Name <span class="text-danger">*</span></label>
+                            <input type="text" name="building_name" id="b_name" class="form-control" maxlength="100" placeholder="e.g. Science Center" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="b_purpose" class="form-label small fw-bold">Usage Purpose</label>
+                            <input type="text" name="usage_purpose" id="b_purpose" class="form-control" maxlength="100" placeholder="e.g. Science classrooms and faculty labs">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create Building</button>
+                    </div>
+                </form>
+            </div>
+        </div>
 
-            <section id="roomFields" hidden>
-                <h3>Room Details</h3>
-                <p>
-                    <label for="roomId">Room ID *</label>
-                    <input name="room_id" id="roomId" maxlength="15" placeholder="e.g. SCI-101">
-                    <small>Unique across all buildings; cannot be changed later.</small>
-                </p>
-                <p>
-                    <label for="roomBuilding">Building *</label>
-                    <select name="room_building_id" id="roomBuilding">
-                        <option value="">Choose a building...</option>
-                        <?php foreach ($buildings as $building): ?>
-                            <option value="<?= facilitiesEsc($building['Building_ID']) ?>"><?= facilitiesEsc($building['Building_Name']) ?> (<?= facilitiesEsc($building['Building_ID']) ?>)</option>
-                        <?php endforeach; ?>
-                    </select>
-                </p>
-                <p>
-                    <label for="roomNumber">Room Number *</label>
-                    <input name="room_no" id="roomNumber" maxlength="10" placeholder="e.g. 101">
-                </p>
-                <p>
-                    <label for="roomType">Room Type *</label>
-                    <select name="room_type" id="roomType">
-                        <option value="">Select room type...</option>
-                        <option value="Lecture">Lecture</option>
-                        <option value="Lab">Lab</option>
-                        <option value="Office">Office</option>
-                    </select>
-                </p>
-                <p>
-                    <label for="roomCapacity" id="capacityLabel">Capacity *</label>
-                    <input name="capacity" id="roomCapacity" type="number" min="1" max="2147483647" step="1">
-                    <small id="capacityHelp">Choose a room type to see the capacity units.</small>
-                </p>
-            </section>
-            <p>
-                <button type="button" id="cancelFacilityButton">Cancel</button>
-                <button type="button" id="checkAvailabilityButton">Check Availability</button>
-                <button type="submit" id="submitFacilityButton" disabled>Submit</button>
-            </p>
-        </form>
-    </dialog>
+        <!-- Modal: Edit Building -->
+        <div class="modal fade" id="editBuildingModal" tabindex="-1" aria-labelledby="editBuildingModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <form action="manage_facilities_process.php" method="POST" class="modal-content shadow">
+                    <input type="hidden" name="action" value="update_building">
+                    <input type="hidden" name="building_id" id="edit_b_id">
+                    <div class="modal-header">
+                        <h5 class="modal-title fw-bold" id="editBuildingModalLabel">Edit Building Details</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Building ID</label>
+                            <input type="text" id="disp_edit_b_id" class="form-control bg-light font-monospace" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_b_name" class="form-label small fw-bold">Building Name <span class="text-danger">*</span></label>
+                            <input type="text" name="building_name" id="edit_b_name" class="form-control" maxlength="100" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_b_purpose" class="form-label small fw-bold">Usage Purpose</label>
+                            <input type="text" name="usage_purpose" id="edit_b_purpose" class="form-control" maxlength="100">
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Modal: Add Room -->
+        <div class="modal fade" id="addRoomModal" tabindex="-1" aria-labelledby="addRoomModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <form action="manage_facilities_process.php" method="POST" class="modal-content shadow">
+                    <input type="hidden" name="action" value="create_room">
+                    <div class="modal-header">
+                        <h5 class="modal-title fw-bold" id="addRoomModalLabel">Add Campus Room</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="r_building_id" class="form-label small fw-bold">Building <span class="text-danger">*</span></label>
+                            <select name="building_id" id="r_building_id" class="form-select" required>
+                                <option value="">Select Building</option>
+                                <?php foreach ($buildings as $b): ?>
+                                    <option value="<?= htmlspecialchars($b['Building_ID'], ENT_QUOTES, 'UTF-8') ?>">
+                                        <?= htmlspecialchars($b['Building_Name'] . ' (' . $b['Building_ID'] . ')', ENT_QUOTES, 'UTF-8') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label for="r_no" class="form-label small fw-bold">Room Number <span class="text-danger">*</span></label>
+                                <input type="text" name="room_no" id="r_no" class="form-control" maxlength="10" placeholder="e.g. 101, 204B" required>
+                            </div>
+                            <div class="col-6">
+                                <label for="r_id" class="form-label small fw-bold">Room ID <span class="text-danger">*</span></label>
+                                <input type="text" name="room_id" id="r_id" class="form-control text-uppercase font-monospace" maxlength="15" placeholder="e.g. SCI-101" required>
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label for="r_type" class="form-label small fw-bold">Room Type <span class="text-danger">*</span></label>
+                                <select name="room_type" id="r_type" class="form-select" required>
+                                    <option value="Lecture">Lecture Hall</option>
+                                    <option value="Lab">Laboratory</option>
+                                    <option value="Office">Office</option>
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label for="r_capacity" class="form-label small fw-bold">Capacity <span class="text-danger">*</span></label>
+                                <input type="number" name="capacity" id="r_capacity" class="form-control" min="1" value="25" required>
+                                <div class="form-text small" id="r_capacity_help">Seats / stations / desks.</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-success">Create Room</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Modal: Edit Room -->
+        <div class="modal fade" id="editRoomModal" tabindex="-1" aria-labelledby="editRoomModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <form action="manage_facilities_process.php" method="POST" class="modal-content shadow">
+                    <input type="hidden" name="action" value="update_room">
+                    <input type="hidden" name="room_id" id="edit_r_id">
+                    <div class="modal-header">
+                        <h5 class="modal-title fw-bold" id="editRoomModalLabel">Edit Room Parameters</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Room ID</label>
+                            <input type="text" id="disp_edit_r_id" class="form-control bg-light font-monospace" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_r_building_id" class="form-label small fw-bold">Building <span class="text-danger">*</span></label>
+                            <select name="building_id" id="edit_r_building_id" class="form-select" required>
+                                <?php foreach ($buildings as $b): ?>
+                                    <option value="<?= htmlspecialchars($b['Building_ID'], ENT_QUOTES, 'UTF-8') ?>">
+                                        <?= htmlspecialchars($b['Building_Name'] . ' (' . $b['Building_ID'] . ')', ENT_QUOTES, 'UTF-8') ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label for="edit_r_no" class="form-label small fw-bold">Room Number <span class="text-danger">*</span></label>
+                                <input type="text" name="room_no" id="edit_r_no" class="form-control" maxlength="10" required>
+                            </div>
+                            <div class="col-6">
+                                <label for="edit_r_type" class="form-label small fw-bold">Room Type <span class="text-danger">*</span></label>
+                                <select name="room_type" id="edit_r_type" class="form-select" required>
+                                    <option value="Lecture">Lecture Hall</option>
+                                    <option value="Lab">Laboratory</option>
+                                    <option value="Office">Office</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="edit_r_capacity" class="form-label small fw-bold">Capacity <span class="text-danger">*</span></label>
+                            <input type="number" name="capacity" id="edit_r_capacity" class="form-control" min="1" required>
+                            <div class="form-text small">Cannot be lowered below scheduled course section capacities.</div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     <?php endif; ?>
 
+    <!-- Bootstrap 5.3 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Client-Side Filter & Modal Wireup Script -->
     <script>
-    (() => {
-        'use strict';
-        const byId = id => document.getElementById(id);
-        const buildingSearch = byId('buildingSearch');
-        const roomSearch = byId('roomSearch');
-        const buildingFilter = byId('buildingFilter');
-        const typeFilter = byId('roomTypeFilter');
-        const buildingRows = [...document.querySelectorAll('#buildingsTable tbody tr[data-search]')];
-        const roomRows = [...document.querySelectorAll('#roomsTable tbody tr[data-search]')];
-        function filterFacilities() {
-            const buildingTerm = buildingSearch.value.trim().toLocaleLowerCase();
-            const roomTerm = roomSearch.value.trim().toLocaleLowerCase();
-            let displayed = 0;
-            buildingRows.forEach(row => { row.hidden = !row.dataset.search.includes(buildingTerm); });
-            roomRows.forEach(row => {
-                row.hidden = !(row.dataset.search.includes(roomTerm)
-                    && (!buildingFilter.value || row.dataset.building === buildingFilter.value)
-                    && (!typeFilter.value || row.dataset.type === typeFilter.value));
-                if (!row.hidden) displayed++;
+    document.addEventListener('DOMContentLoaded', function () {
+        const searchInput    = document.getElementById('facilitySearch');
+        const buildingFilter = document.getElementById('buildingFilter');
+        const roomTypeFilter = document.getElementById('roomTypeFilter');
+
+        function applyFilters() {
+            const query = (searchInput.value || '').trim().toLowerCase();
+            const selBuilding = (buildingFilter.value || '').trim();
+            const selType = (roomTypeFilter.value || '').trim();
+
+            // Filter Buildings Table
+            document.querySelectorAll('.building-row').forEach(row => {
+                const bId = row.dataset.buildingId || '';
+                const bName = row.dataset.buildingName || '';
+                const bPurpose = row.dataset.purpose || '';
+
+                const matchesQuery = !query || bId.includes(query) || bName.includes(query) || bPurpose.includes(query);
+                const matchesBuilding = !selBuilding || bId.toUpperCase() === selBuilding.toUpperCase();
+
+                row.style.display = (matchesQuery && matchesBuilding) ? '' : 'none';
             });
-            byId('visibleRoomsCount').textContent = String(displayed);
-        }
-        [buildingSearch, roomSearch, buildingFilter, typeFilter].forEach(el => {
-            el.addEventListener('input', filterFacilities);
-            el.addEventListener('change', filterFacilities);
-        });
 
-        const form = byId('facilityForm');
-        if (!form) return; // Read-only access for Security Levels 2–4.
-        const dialog = byId('facilityModal');
-        const modal = { show: () => dialog.showModal(), hide: () => dialog.close() };
-        byId('cancelFacilityButton').addEventListener('click', () => modal.hide());
-        dialog.addEventListener('close', () => { form.reset(); invalidateCheck(); });
-        const checkButton = byId('checkAvailabilityButton');
-        const submitButton = byId('submitFacilityButton');
-        const message = byId('facilityFormMessage');
-        const buildingFields = byId('buildingFields');
-        const roomFields = byId('roomFields');
-        const roomType = byId('roomType');
-        let pending = false;
-        let changeVersion = 0;
+            // Filter Rooms Table
+            document.querySelectorAll('.room-row').forEach(row => {
+                const rId = row.dataset.roomId || '';
+                const rBldId = row.dataset.buildingId || '';
+                const rBldName = row.dataset.buildingName || '';
+                const rNo = row.dataset.roomNo || '';
+                const rType = row.dataset.roomType || '';
 
-        function showMessage(text, available = false) {
-            message.textContent = text;
-            message.hidden = false;
-        }
-        function invalidateCheck() {
-            changeVersion++;
-            byId('ticketInput').value = '';
-            submitButton.disabled = true;
-            message.hidden = true;
-            message.textContent = '';
-        }
-        function updateCapacityLabel() {
-            const unit = { Lecture: ['Lecture seats', 'Number of seats in the lecture room.'], Lab: ['Lab stations', 'Number of lab workstations.'], Office: ['Office desks', 'Number of desks in the office.'] }[roomType.value];
-            byId('capacityLabel').textContent = unit ? unit[0] + ' *' : 'Capacity *';
-            byId('capacityHelp').textContent = unit ? unit[1] : 'Choose a room type to see the capacity units.';
-        }
-        function setMode(entity, operation) {
-            byId('entityInput').value = entity;
-            byId('operationInput').value = operation;
-            buildingFields.hidden = entity !== 'building';
-            roomFields.hidden = entity !== 'room';
-            byId('buildingId').required = entity === 'building';
-            byId('buildingName').required = entity === 'building';
-            ['roomId', 'roomBuilding', 'roomNumber', 'roomType', 'roomCapacity'].forEach(id => {
-                byId(id).required = entity === 'room';
+                const matchesQuery = !query || rId.includes(query) || rBldId.toLowerCase().includes(query) || rBldName.includes(query) || rNo.includes(query);
+                const matchesBuilding = !selBuilding || rBldId.toUpperCase() === selBuilding.toUpperCase();
+                const matchesType = !selType || rType.toLowerCase() === selType.toLowerCase();
+
+                row.style.display = (matchesQuery && matchesBuilding && matchesType) ? '' : 'none';
             });
-            byId('buildingId').readOnly = operation === 'update';
-            byId('roomId').readOnly = operation === 'update';
-            byId('facilityModalTitle').textContent = (operation === 'create' ? 'Create New ' : 'Edit ') + (entity === 'building' ? 'Building' : 'Room');
-            updateCapacityLabel();
         }
-        function startNew(entity) {
-            form.reset();
-            setMode(entity, 'create');
-            invalidateCheck();
-            modal.show();
-        }
-        byId('createBuildingButton').addEventListener('click', () => startNew('building'));
-        byId('createRoomButton').addEventListener('click', () => startNew('room'));
-        document.querySelectorAll('.edit-building').forEach(btn => btn.addEventListener('click', () => {
-            form.reset();
-            setMode('building', 'update');
-            byId('buildingId').value = btn.dataset.id;
-            byId('buildingName').value = btn.dataset.name;
-            byId('usagePurpose').value = btn.dataset.purpose;
-            invalidateCheck();
-            modal.show();
-        }));
-        document.querySelectorAll('.edit-room').forEach(btn => btn.addEventListener('click', () => {
-            form.reset();
-            setMode('room', 'update');
-            byId('roomId').value = btn.dataset.id;
-            byId('roomBuilding').value = btn.dataset.building;
-            byId('roomNumber').value = btn.dataset.number;
-            byId('roomType').value = btn.dataset.type;
-            byId('roomCapacity').value = btn.dataset.capacity;
-            updateCapacityLabel();
-            invalidateCheck();
-            modal.show();
-        }));
-        roomType.addEventListener('change', updateCapacityLabel);
-        form.addEventListener('input', invalidateCheck);
-        form.addEventListener('change', invalidateCheck);
 
-        function activeFieldsAreValid() {
-            const section = byId('entityInput').value === 'building' ? buildingFields : roomFields;
-            for (const control of section.querySelectorAll('input, select')) {
-                if (!control.checkValidity()) {
-                    control.reportValidity();
-                    return false;
+        if (searchInput) searchInput.addEventListener('input', applyFilters);
+        if (buildingFilter) buildingFilter.addEventListener('change', applyFilters);
+        if (roomTypeFilter) roomTypeFilter.addEventListener('change', applyFilters);
+
+        // Auto-suggest Room ID on Add Room
+        const rBldSelect = document.getElementById('r_building_id');
+        const rNoInput   = document.getElementById('r_no');
+        const rIdInput   = document.getElementById('r_id');
+
+        function autoSuggestRoomId() {
+            if (rBldSelect && rNoInput && rIdInput) {
+                const bCode = (rBldSelect.value || '').trim();
+                const no = (rNoInput.value || '').trim();
+                if (bCode && no && (!rIdInput.value || rIdInput.dataset.autoGenerated === 'true')) {
+                    rIdInput.value = `${bCode}-${no}`.toUpperCase();
+                    rIdInput.dataset.autoGenerated = 'true';
                 }
             }
-            return true;
         }
-        async function postAction(action) {
-            const data = new FormData(form);
-            data.set('action', action);
-            const response = await fetch('manage_facilities_process.php', {
-                method: 'POST', credentials: 'same-origin',
-                headers: { 'Accept': 'application/json' }, body: data,
+        if (rBldSelect) rBldSelect.addEventListener('change', autoSuggestRoomId);
+        if (rNoInput) rNoInput.addEventListener('input', autoSuggestRoomId);
+        if (rIdInput) {
+            rIdInput.addEventListener('input', function() {
+                rIdInput.dataset.autoGenerated = 'false';
             });
-            let result;
-            try {
-                result = await response.json();
-            } catch (_) {
-                throw new Error('The server returned an unexpected response. Refresh and try again.');
-            }
-            if (!response.ok || !result.ok) {
-                throw new Error(result.message || 'The operation could not be completed.');
-            }
-            return result;
         }
-        checkButton.addEventListener('click', async () => {
-            if (pending || !activeFieldsAreValid()) return;
-            invalidateCheck();
-            pending = true;
-            const checkedVersion = changeVersion;
-            checkButton.disabled = true;
-            try {
-                const result = await postAction('check');
-                if (changeVersion !== checkedVersion) return; // The form changed during the request.
-                if (result.available && result.ticket) {
-                    byId('ticketInput').value = result.ticket;
-                    submitButton.disabled = false;
-                }
-                showMessage(result.message, Boolean(result.available));
-            } catch (error) {
-                if (changeVersion === checkedVersion) showMessage(error.message);
-            } finally {
-                pending = false;
-                checkButton.disabled = false;
-            }
-        });
-        form.addEventListener('submit', async event => {
-            event.preventDefault();
-            if (pending || !activeFieldsAreValid() || !byId('ticketInput').value) return;
-            pending = true;
-            checkButton.disabled = true;
-            submitButton.disabled = true;
-            try {
-                await postAction('save');
-                window.location.assign('manage_facilities.php');
-            } catch (error) {
-                showMessage(error.message);
-                byId('ticketInput').value = '';
-            } finally {
-                pending = false;
-                checkButton.disabled = false;
-            }
-        });
-    })();
+
+        // Edit Building Modal Wireup
+        const editBuildingModal = document.getElementById('editBuildingModal');
+        if (editBuildingModal) {
+            const editModalObj = new bootstrap.Modal(editBuildingModal);
+            document.querySelectorAll('.btn-edit-building').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    document.getElementById('edit_b_id').value = this.dataset.id || '';
+                    document.getElementById('disp_edit_b_id').value = this.dataset.id || '';
+                    document.getElementById('edit_b_name').value = this.dataset.name || '';
+                    document.getElementById('edit_b_purpose').value = this.dataset.purpose || '';
+                    editModalObj.show();
+                });
+            });
+        }
+
+        // Edit Room Modal Wireup
+        const editRoomModal = document.getElementById('editRoomModal');
+        if (editRoomModal) {
+            const editRoomModalObj = new bootstrap.Modal(editRoomModal);
+            document.querySelectorAll('.btn-edit-room').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    document.getElementById('edit_r_id').value = this.dataset.id || '';
+                    document.getElementById('disp_edit_r_id').value = this.dataset.id || '';
+                    document.getElementById('edit_r_building_id').value = this.dataset.building || '';
+                    document.getElementById('edit_r_no').value = this.dataset.roomno || '';
+                    document.getElementById('edit_r_type').value = this.dataset.type || 'Lecture';
+                    document.getElementById('edit_r_capacity').value = this.dataset.capacity || '25';
+                    editRoomModalObj.show();
+                });
+            });
+        }
+    });
     </script>
 </body>
 </html>

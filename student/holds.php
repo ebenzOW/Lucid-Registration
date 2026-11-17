@@ -40,47 +40,7 @@ $has_active_holds = !empty($holds);
 <body class="bg-light">
 
     <!-- Unified Student Top Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#studentNav" aria-controls="studentNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="studentNav">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link" href="dashboard.php">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="schedule.php">My Schedule</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="master_schedule.php">Master Schedule</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="register.php">Register / Add-Drop</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="transcript.php">Transcript</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="degree_audit.php">Degree Audit</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="holds.php">Holds</a>
-                    </li>
-                </ul>
-                <div class="d-flex align-items-center gap-3">
-                    <span class="navbar-text text-white small d-none d-lg-inline">
-                        Welcome, <?= getUserNavbarProfileHtml($conn, $student_id, 'Student') ?>
-                    </span>
-                    <form action="../logout.php" method="POST" class="m-0">
-                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <?= renderStudentNavbar($conn, $student_id, 'holds.php') ?>
 
     <div class="container mb-5">
 

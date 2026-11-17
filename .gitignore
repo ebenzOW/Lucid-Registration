@@ -8,9 +8,13 @@ db_login_template.php
 .env
 email_config.php
 notes.txt
-TODO.txt    
+TODO.txt
 *.ps1
 *.md
+*.sh
+.antigravity/
+
+.devcontainer/
 # =========================
 # Dependencies & Libraries
 # =========================

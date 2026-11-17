@@ -5,6 +5,8 @@
  *
  * Dedicated profile viewing interface displaying user account information
  * and granular role-specific academic and professional records.
+ * Supports public faculty directory browsing, teaching schedule inspection across terms,
+ * section roster drill-downs, and advisee list tracking.
  */
 
 session_start();
@@ -19,25 +21,11 @@ $viewer_type = $_SESSION["User_Type"] ?? '';
 
 require_once 'db_connect.php';
 require_once __DIR__ . '/includes/academic_helpers.php';
+require_once 'profile_hover_card.php';
 
 $target_id = isset($_GET['user_id']) ? (int)$_GET['user_id'] : $viewer_id;
 
-// Permission validation:
-// Users can view their own profile. Admins/Stat-Dept can view any profile.
-// Faculty can view their own profile or advisees/students via canViewerAccessStudentRecord.
-$hasAccess = false;
-if ($target_id === $viewer_id || $viewer_type === 'Admin' || $viewer_type === 'Stat-Dept') {
-    $hasAccess = true;
-} elseif ($viewer_type === 'Faculty') {
-    $hasAccess = canViewerAccessStudentRecord($conn, $viewer_id, $viewer_type, $target_id);
-}
-
-if (!$hasAccess) {
-    // Default to viewer's own profile if unauthorized
-    $target_id = $viewer_id;
-}
-
-// 1. Fetch Base User & Login Data
+// 1. Fetch Target User Record
 $userStmt = $conn->prepare("
     SELECT u.User_ID, u.User_Type, u.User_FName, u.User_MName, u.User_LName,
            u.User_Gender, u.User_DOB, u.User_PhoneNo,
@@ -53,19 +41,88 @@ $user = $userStmt->get_result()->fetch_assoc();
 $userStmt->close();
 
 if (!$user) {
+    // If target not found, fall back to viewer's own profile
+    $target_id = $viewer_id;
+    $userStmt = $conn->prepare("
+        SELECT u.User_ID, u.User_Type, u.User_FName, u.User_MName, u.User_LName,
+               u.User_Gender, u.User_DOB, u.User_PhoneNo,
+               u.Street_No, u.Street_Name, u.City, u.State, u.Country, u.Zip_Code,
+               l.User_Email
+        FROM `USER` u
+        LEFT JOIN LOGIN l ON u.User_ID = l.User_ID
+        WHERE u.User_ID = ?
+    ");
+    $userStmt->bind_param("i", $target_id);
+    $userStmt->execute();
+    $user = $userStmt->get_result()->fetch_assoc();
+    $userStmt->close();
+}
+
+if (!$user) {
     die("User record not found.");
 }
 
 $target_type = $user['User_Type'];
-$fullName = trim($user['User_FName'] . ' ' . (!empty($user['User_MName']) ? $user['User_MName'] . ' ' : '') . $user['User_LName']);
-$fullAddress = trim(($user['Street_No'] ?? '') . ' ' . ($user['Street_Name'] ?? ''));
-$cityStateZip = trim(($user['City'] ?? '') . ($user['City'] && $user['State'] ? ', ' : '') . ($user['State'] ?? '') . ' ' . ($user['Zip_Code'] ?? ''));
 
-// 2. Fetch Role-Specific Details
-$studentData = null;
-$facultyData = null;
-$adminData   = null;
-$statData    = null;
+// 2. Permission & Access Control
+// - Users can always view their own profile.
+// - Admins and Stat-Dept can view any profile.
+// - All authenticated users can view Faculty profiles in directory view.
+// - Faculty can view student profiles if they advise or teach them.
+$hasAccess = false;
+$canViewPrivate = false;
+
+if ($target_id === $viewer_id) {
+    $hasAccess = true;
+    $canViewPrivate = true;
+} elseif ($viewer_type === 'Admin') {
+    $hasAccess = true;
+    $canViewPrivate = true;
+} elseif ($viewer_type === 'Stat-Dept') {
+    $hasAccess = true;
+    $canViewPrivate = false;
+} elseif ($target_type === 'Faculty') {
+    // Public directory view for all logged-in students and faculty
+    $hasAccess = true;
+    $canViewPrivate = ($viewer_type === 'Admin' || $viewer_id === $target_id);
+} elseif ($viewer_type === 'Faculty' && $target_type === 'Student') {
+    $hasAccess = canViewerAccessStudentRecord($conn, $viewer_id, $viewer_type, $target_id);
+    $canViewPrivate = $hasAccess;
+}
+
+if (!$hasAccess) {
+    header("Location: user_profile.php?user_id=" . $viewer_id);
+    exit;
+}
+
+// 3. Format Base Identity Information (with privacy masking for directory views)
+$fullName = trim($user['User_FName'] . ' ' . (!empty($user['User_MName']) ? $user['User_MName'] . ' ' : '') . $user['User_LName']);
+
+if ($canViewPrivate) {
+    $phoneDisplay   = $user['User_PhoneNo'] ?? 'N/A';
+    $genderDisplay  = $user['User_Gender'] ?? 'N/A';
+    $dobDisplay     = $user['User_DOB'] ?? 'N/A';
+    $fullAddress    = trim(($user['Street_No'] ?? '') . ' ' . ($user['Street_Name'] ?? ''));
+    $cityStateZip   = trim(($user['City'] ?? '') . ($user['City'] && $user['State'] ? ', ' : '') . ($user['State'] ?? '') . ' ' . ($user['Zip_Code'] ?? ''));
+    $countryDisplay = $user['Country'] ?? 'USA';
+} else {
+    $phoneDisplay   = '<span class="text-muted fst-italic">Protected (Directory View)</span>';
+    $genderDisplay  = '<span class="text-muted fst-italic">Protected</span>';
+    $dobDisplay     = '<span class="text-muted fst-italic">Protected</span>';
+    $fullAddress    = '<span class="text-muted fst-italic">Protected (Directory View)</span>';
+    $cityStateZip   = '';
+    $countryDisplay = '';
+}
+
+// 4. Fetch Role-Specific Details
+$studentData      = null;
+$facultyData      = null;
+$adminData        = null;
+$statData         = null;
+$facultyAdvisees  = [];
+$teachingSections = [];
+$rosterSection    = null;
+$rosterStudents   = null;
 
 if ($target_type === 'Student') {
     $sStmt = $conn->prepare("
@@ -150,20 +207,13 @@ if ($target_type === 'Student') {
     $studentData['holds_count'] = count($holds);
 
 } elseif ($target_type === 'Faculty') {
-    $fStmt = $conn->prepare("
-        SELECT f.Rank, f.Faculty_Type, f.Specialty, f.Office_ID,
-               r.Room_NO, b.Building_Name
-        FROM FACULTY f
-        LEFT JOIN ROOM r ON f.Office_ID = r.Room_ID
-        LEFT JOIN BUILDING b ON r.Building_ID = b.Building_ID
-        WHERE f.Faculty_ID = ?
-    ");
-    $fStmt->bind_param("i", $target_id);
-    $fStmt->execute();
-    $facultyData = $fStmt->get_result()->fetch_assoc();
-    $fStmt->close();
+    // 1. Fetch Faculty Profile via Helper
+    $facultyProfile = getFacultyProfile($conn, $target_id);
+    $facultyData = $facultyProfile ?: [];
+    $facultyData['Building_Name'] = $facultyProfile['Office_Building_Name'] ?? '';
+    $facultyData['Room_NO'] = $facultyProfile['Office_Room_NO'] ?? '';
 
-    // Department Roster Assignments
+    // 2. Department Roster Assignments
     $drStmt = $conn->prepare("
         SELECT d.Department_Name, dr.Percent_Time, dr.Date_of_Assignment
         FROM DEPARTMENT_ROSTER dr
@@ -181,7 +231,7 @@ if ($target_type === 'Student') {
     $drStmt->close();
     $facultyData['departments'] = $departments;
 
-    // Leadership Roles
+    // 3. Leadership Roles
     $leadStmt = $conn->prepare("
         SELECT d.Department_Name, 'Department Chair' AS Role_Title
         FROM DEPARTMENT d
@@ -202,9 +252,9 @@ if ($target_type === 'Student') {
     $leadStmt->close();
     $facultyData['leadership'] = $leadership;
 
-    // Teaching Section Counts (Fall 2026 and Spring 2027)
+    // 4. Teaching Section Counts (Fall 2026 and Spring 2027)
     $secCountStmt = $conn->prepare("
-        SELECT 
+        SELECT
             (SELECT COUNT(*) FROM COURSE_SECTIONS WHERE Faculty_ID = ? AND Semester_ID = 202608) AS fall_load,
             (SELECT COUNT(*) FROM COURSE_SECTIONS WHERE Faculty_ID = ? AND Semester_ID = 202701) AS spring_load
     ");
@@ -215,12 +265,35 @@ if ($target_type === 'Student') {
     $facultyData['fall_load']   = (int)($loadCounts['fall_load'] ?? 0);
     $facultyData['spring_load'] = (int)($loadCounts['spring_load'] ?? 0);
 
-    // Advisees Count
-    $advCountStmt = $conn->prepare("SELECT COUNT(*) AS cnt FROM ADVISOR_STUDENT WHERE Faculty_ID = ?");
-    $advCountStmt->bind_param("i", $target_id);
-    $advCountStmt->execute();
-    $facultyData['advisee_count'] = (int)($advCountStmt->get_result()->fetch_assoc()['cnt'] ?? 0);
-    $advCountStmt->close();
+    // 5. Advisees List & Count
+    if ($canViewPrivate) {
+        $facultyAdvisees = getFacultyAdvisees($conn, $target_id);
+        $facultyData['advisee_count'] = count($facultyAdvisees);
+    } else {
+        $advCountStmt = $conn->prepare("SELECT COUNT(*) AS cnt FROM ADVISOR_STUDENT WHERE Faculty_ID = ?");
+        $advCountStmt->bind_param("i", $target_id);
+        $advCountStmt->execute();
+        $facultyData['advisee_count'] = (int)($advCountStmt->get_result()->fetch_assoc()['cnt'] ?? 0);
+        $advCountStmt->close();
+    }
+
+    // 6. Full Teaching Schedule across Semesters
+    $teachingSchedules = getFacultyScheduleBySemester($conn, $target_id, null);
+    $teachingSections = $teachingSchedules['sections'];
+
+    // 7. Section Roster Drill-Down Resolution
+    $roster_crn = isset($_GET['roster_crn']) ? filter_var($_GET['roster_crn'], FILTER_VALIDATE_INT) : null;
+    if ($roster_crn && ($canViewPrivate || $viewer_type === 'Admin')) {
+        foreach ($teachingSections as $secItem) {
+            if ((int)$secItem['CRN'] === $roster_crn) {
+                $rosterSection = $secItem;
+                break;
+            }
+        }
+        if ($rosterSection || $viewer_type === 'Admin') {
+            $rosterStudents = getSectionRoster($conn, $roster_crn, ($viewer_type === 'Admin' ? null : $target_id));
+        }
+    }
 
 } elseif ($target_type === 'Admin') {
     $aStmt = $conn->prepare("SELECT Security_Level FROM ADMIN WHERE Admin_ID = ?");
@@ -251,14 +324,14 @@ $dashboardUrl = match($viewer_type) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>User Profile - <?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8') ?> | Lucid University</title>
-    <!-- Minimal Clean Bootstrap 5.3 CSS -->
+    <!-- Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
 
     <!-- Top Navigation Bar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
-        <div class="container">
+        <div class="container-fluid px-lg-5">
             <a class="navbar-brand fw-bold" href="<?= htmlspecialchars($dashboardUrl, ENT_QUOTES, 'UTF-8') ?>">
                 Lucid University
                 <span class="badge bg-secondary ms-1 fs-6"><?= htmlspecialchars($viewer_type, ENT_QUOTES, 'UTF-8') ?></span>
@@ -274,7 +347,7 @@ $dashboardUrl = match($viewer_type) {
         </div>
     </nav>
 
-    <div class="container mb-5">
+    <div class="container-fluid px-lg-5 mb-5">
 
         <!-- Header Card -->
         <div class="card shadow-sm mb-4 border-0">
@@ -291,6 +364,8 @@ $dashboardUrl = match($viewer_type) {
                                 Role: <span class="badge bg-primary"><?= htmlspecialchars($target_type, ENT_QUOTES, 'UTF-8') ?></span>
                                 <?php if ($target_id === $viewer_id): ?>
                                     <span class="badge bg-success ms-1">Your Account</span>
+                                <?php elseif (!$canViewPrivate && $target_type === 'Faculty'): ?>
+                                    <span class="badge bg-info text-dark ms-1">Directory View</span>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -304,7 +379,7 @@ $dashboardUrl = match($viewer_type) {
             </div>
         </div>
 
-        <div class="row g-4">
+        <div class="row g-4 mb-4">
 
             <!-- Card 1: General User Information -->
             <div class="col-lg-6">
@@ -337,25 +412,29 @@ $dashboardUrl = match($viewer_type) {
                                 </tr>
                                 <tr>
                                     <th class="text-muted">Phone Number:</th>
-                                    <td><?= htmlspecialchars($user['User_PhoneNo'] ?? 'N/A', ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td><?= $phoneDisplay ?></td>
                                 </tr>
                                 <tr>
                                     <th class="text-muted">Gender:</th>
-                                    <td><?= htmlspecialchars($user['User_Gender'] ?? 'N/A', ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td><?= $genderDisplay ?></td>
                                 </tr>
                                 <tr>
                                     <th class="text-muted">Date of Birth:</th>
-                                    <td><?= htmlspecialchars($user['User_DOB'] ?? 'N/A', ENT_QUOTES, 'UTF-8') ?></td>
+                                    <td><?= $dobDisplay ?></td>
                                 </tr>
                                 <tr>
                                     <th class="text-muted align-top">Residential Address:</th>
                                     <td>
-                                        <?php if ($fullAddress || $cityStateZip): ?>
-                                            <?= htmlspecialchars($fullAddress, ENT_QUOTES, 'UTF-8') ?><br>
-                                            <?= htmlspecialchars($cityStateZip, ENT_QUOTES, 'UTF-8') ?><br>
-                                            <?= htmlspecialchars($user['Country'] ?? 'USA', ENT_QUOTES, 'UTF-8') ?>
+                                        <?php if ($canViewPrivate): ?>
+                                            <?php if ($fullAddress || $cityStateZip): ?>
+                                                <?= htmlspecialchars($fullAddress, ENT_QUOTES, 'UTF-8') ?><br>
+                                                <?= htmlspecialchars($cityStateZip, ENT_QUOTES, 'UTF-8') ?><br>
+                                                <?= htmlspecialchars($countryDisplay, ENT_QUOTES, 'UTF-8') ?>
+                                            <?php else: ?>
+                                                <span class="text-muted">No address on file</span>
+                                            <?php endif; ?>
                                         <?php else: ?>
-                                            <span class="text-muted">No address on file</span>
+                                            <?= $fullAddress ?>
                                         <?php endif; ?>
                                     </td>
                                 </tr>
@@ -427,7 +506,7 @@ $dashboardUrl = match($viewer_type) {
                                         <th class="text-muted align-top">Assigned Advisor:</th>
                                         <td>
                                             <?php if ($studentData['advisor']): ?>
-                                                <strong>Dr. <?= htmlspecialchars($studentData['advisor']['User_FName'] . ' ' . $studentData['advisor']['User_LName'], ENT_QUOTES, 'UTF-8') ?></strong><br>
+                                                <strong><?= renderFacultyLink($studentData['advisor']['Faculty_ID'] ?? 0, 'Dr. ' . $studentData['advisor']['User_FName'] . ' ' . $studentData['advisor']['User_LName'], '') ?></strong><br>
                                                 <small class="text-muted">
                                                     Email: <a href="mailto:<?= htmlspecialchars($studentData['advisor']['User_Email'] ?? '', ENT_QUOTES, 'UTF-8') ?>"><?= htmlspecialchars($studentData['advisor']['User_Email'] ?? '', ENT_QUOTES, 'UTF-8') ?></a>
                                                 </small>
@@ -592,10 +671,284 @@ $dashboardUrl = match($viewer_type) {
 
         </div>
 
+        <?php if ($target_type === 'Faculty'): ?>
+
+            <?php if ($rosterSection): ?>
+                <!-- Section Roster Drill-Down Card -->
+                <div id="faculty-roster-view" class="card shadow-sm border-0 border-top border-primary border-4 mb-4">
+                    <div class="card-header bg-white py-3 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div>
+                            <div class="d-flex align-items-center gap-2">
+                                <span class="badge bg-primary fs-6">CRN <?= (int)$rosterSection['CRN'] ?></span>
+                                <h5 class="fw-bold mb-0 text-dark">
+                                    <?= htmlspecialchars($rosterSection['Course_ID'] . ' - ' . $rosterSection['Course_Name'], ENT_QUOTES, 'UTF-8') ?>
+                                    (Sec <?= htmlspecialchars((string)$rosterSection['Section_Number'], ENT_QUOTES, 'UTF-8') ?>)
+                                </h5>
+                            </div>
+                            <div class="text-secondary small mt-1">
+                                Semester: <strong><?= htmlspecialchars(($rosterSection['Semester_Name'] ?? '') . ' ' . ($rosterSection['Semester_Year'] ?? ''), ENT_QUOTES, 'UTF-8') ?></strong> &bull;
+                                Schedule: <?= formatSchedule($rosterSection['Time_Slot_Day'], $rosterSection['Start_Time'], $rosterSection['End_Time']) ?> &bull;
+                                Room: <?= htmlspecialchars($rosterSection['Building_Name'] . ' ' . $rosterSection['Room_NO'], ENT_QUOTES, 'UTF-8') ?>
+                            </div>
+                        </div>
+                        <div>
+                            <a href="user_profile.php?user_id=<?= (int)$target_id ?>" class="btn btn-outline-secondary btn-sm">
+                                Close Roster &times;
+                            </a>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <?php if (empty($rosterStudents)): ?>
+                            <div class="p-5 text-center text-muted">
+                                <h6 class="fw-bold text-secondary mb-1">No Enrolled Students</h6>
+                                <p class="small mb-0">No student enrollment records found for section CRN <?= (int)$rosterSection['CRN'] ?>.</p>
+                            </div>
+                        <?php else: ?>
+                            <div class="table-responsive">
+                                <table class="table table-hover table-striped mb-0 align-middle">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Student ID</th>
+                                            <th>Student Name</th>
+                                            <th>Email</th>
+                                            <th>Class Standing</th>
+                                            <th>Attendance</th>
+                                            <th>Declared Major(s)</th>
+                                            <th>Midterm</th>
+                                            <th>Final Grade</th>
+                                            <th class="text-end pe-3">Profile</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($rosterStudents as $st): ?>
+                                            <tr>
+                                                <td><strong><?= (int)$st['Student_ID'] ?></strong></td>
+                                                <td>
+                                                    <a href="user_profile.php?user_id=<?= (int)$st['Student_ID'] ?>" class="text-decoration-none fw-semibold text-primary">
+                                                        <?= htmlspecialchars($st['full_name'], ENT_QUOTES, 'UTF-8') ?>
+                                                    </a>
+                                                </td>
+                                                <td>
+                                                    <a href="mailto:<?= htmlspecialchars($st['User_Email'] ?? '', ENT_QUOTES, 'UTF-8') ?>" class="text-muted small">
+                                                        <?= htmlspecialchars($st['User_Email'] ?? 'N/A', ENT_QUOTES, 'UTF-8') ?>
+                                                    </a>
+                                                </td>
+                                                <td><span class="badge bg-secondary"><?= htmlspecialchars($st['class_standing'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                                                <td><small class="text-muted"><?= htmlspecialchars($st['Attendance_Type'] ?? 'Full-Time', ENT_QUOTES, 'UTF-8') ?></small></td>
+                                                <td><small><?= htmlspecialchars($st['Major_Name'] ?? 'Undeclared', ENT_QUOTES, 'UTF-8') ?></small></td>
+                                                <td>
+                                                    <?= !empty($st['Midterm_Grade']) ? '<span class="badge bg-info text-dark">' . htmlspecialchars($st['Midterm_Grade'], ENT_QUOTES, 'UTF-8') . '</span>' : '<span class="text-muted">&mdash;</span>' ?>
+                                                </td>
+                                                <td>
+                                                    <?= !empty($st['Grade']) ? '<span class="badge bg-success">' . htmlspecialchars($st['Grade'], ENT_QUOTES, 'UTF-8') . '</span>' : '<span class="text-muted">&mdash;</span>' ?>
+                                                </td>
+                                                <td class="text-end pe-3">
+                                                    <a href="user_profile.php?user_id=<?= (int)$st['Student_ID'] ?>" class="btn btn-outline-primary btn-sm py-0 px-2" style="font-size: 0.8rem;">
+                                                        View &rarr;
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+            <!-- Teaching Schedule Card -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h5 class="mb-0 fw-bold">
+                        <?= $canViewPrivate ? 'Teaching Schedule Across Semesters' : 'Current &amp; Upcoming Course Offerings' ?>
+                    </h5>
+                    <span class="badge bg-secondary"><?= count($teachingSections) ?> Total Section<?= count($teachingSections) !== 1 ? 's' : '' ?></span>
+                </div>
+                <div class="card-body p-0">
+                    <?php
+                    $displaySections = $teachingSections;
+                    if (!$canViewPrivate) {
+                        // Directory view: only show current & upcoming course offerings
+                        $displaySections = array_filter($teachingSections, fn($s) => (int)$s['Semester_ID'] >= 202608);
+                    }
+                    ?>
+                    <?php if (empty($displaySections)): ?>
+                        <div class="p-5 text-center text-muted">
+                            <h6 class="fw-bold text-secondary mb-1">No Scheduled Teaching Sections</h6>
+                            <p class="small mb-0">No course sections scheduled for this instructor.</p>
+                        </div>
+                    <?php else: ?>
+                        <div class="table-responsive">
+                            <table class="table table-hover table-striped mb-0 align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Term</th>
+                                        <th>CRN</th>
+                                        <th>Course ID</th>
+                                        <th>Sec</th>
+                                        <th>Course Name</th>
+                                        <th class="text-center">Credits</th>
+                                        <th>Day / Time</th>
+                                        <th>Room</th>
+                                        <?php if ($canViewPrivate): ?>
+                                            <th class="text-center">Enrollment / Capacity</th>
+                                        <?php else: ?>
+                                            <th class="text-center">Available Seats</th>
+                                        <?php endif; ?>
+                                        <th class="text-center">Status</th>
+                                        <?php if ($canViewPrivate): ?>
+                                            <th class="text-end pe-3">Roster</th>
+                                        <?php endif; ?>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($displaySections as $ts):
+                                        $tsCrn = (int)$ts['CRN'];
+                                        $tsSemId = (int)$ts['Semester_ID'];
+                                        $isPast = ($tsSemId < 202608);
+                                        $cap = (int)($ts['Room_Capacity'] ?? 0);
+                                        $enr = (int)($ts['Enrolled_Count'] ?? 0);
+                                        $seats = (int)($ts['Available_seats'] ?? 0);
+                                    ?>
+                                        <tr>
+                                            <td>
+                                                <span class="badge bg-light text-dark border">
+                                                    <?= htmlspecialchars(($ts['Semester_Name'] ?? '') . ' ' . ($ts['Semester_Year'] ?? ''), ENT_QUOTES, 'UTF-8') ?>
+                                                </span>
+                                            </td>
+                                            <td><strong><?= $tsCrn ?></strong></td>
+                                            <td><span class="badge text-bg-light border"><?= htmlspecialchars($ts['Course_ID'], ENT_QUOTES, 'UTF-8') ?></span></td>
+                                            <td><?= htmlspecialchars((string)$ts['Section_Number'], ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td>
+                                                <span class="fw-semibold"><?= htmlspecialchars($ts['Course_Name'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                <span class="badge bg-secondary-subtle text-secondary small ms-1"><?= htmlspecialchars($ts['Course_Type'], ENT_QUOTES, 'UTF-8') ?></span>
+                                            </td>
+                                            <td class="text-center fw-bold"><?= (int)$ts['Course_Credits'] ?></td>
+                                            <td><?= formatSchedule($ts['Time_Slot_Day'], $ts['Start_Time'], $ts['End_Time']) ?></td>
+                                            <td><?= htmlspecialchars($ts['Building_Name'] . ' ' . $ts['Room_NO'], ENT_QUOTES, 'UTF-8') ?></td>
+                                            <?php if ($canViewPrivate): ?>
+                                                <td class="text-center">
+                                                    <?php if ($isPast): ?>
+                                                        <span class="badge bg-secondary"><?= $enr ?> Enrolled</span>
+                                                    <?php else: ?>
+                                                        <?php if ($seats <= 0): ?>
+                                                            <span class="badge bg-danger"><?= $enr ?> / <?= $cap ?> (Full)</span>
+                                                        <?php else: ?>
+                                                            <span class="badge bg-success"><?= $enr ?> / <?= $cap ?> (<?= $seats ?> open)</span>
+                                                        <?php endif; ?>
+                                                    <?php endif; ?>
+                                                </td>
+                                            <?php else: ?>
+                                                <td class="text-center">
+                                                    <?php if ($seats > 0): ?>
+                                                        <span class="badge bg-success"><?= $seats ?> open</span>
+                                                    <?php else: ?>
+                                                        <span class="badge bg-danger">Full (0)</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                            <?php endif; ?>
+                                            <td class="text-center">
+                                                <?php if (($ts['Status'] ?? 'Active') === 'Active'): ?>
+                                                    <span class="badge bg-success">Active</span>
+                                                <?php else: ?>
+                                                    <span class="badge bg-danger">Cancelled</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <?php if ($canViewPrivate): ?>
+                                                <td class="text-end pe-3">
+                                                    <a href="user_profile.php?user_id=<?= (int)$target_id ?>&roster_crn=<?= $tsCrn ?>#faculty-roster-view" class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 0.8rem;">
+                                                        Roster &rarr;
+                                                    </a>
+                                                </td>
+                                            <?php endif; ?>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <?php if ($canViewPrivate): ?>
+                <!-- Assigned Advisees Card -->
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0 fw-bold">Assigned Academic Advisees</h5>
+                        <span class="badge <?= count($facultyAdvisees) >= 15 ? 'bg-danger' : 'bg-primary' ?>">
+                            <?= count($facultyAdvisees) ?> / 15 Advisees
+                        </span>
+                    </div>
+                    <div class="card-body p-0">
+                        <?php if (empty($facultyAdvisees)): ?>
+                            <div class="p-5 text-center text-muted">
+                                <h6 class="fw-bold text-secondary mb-1">No Advisees Assigned</h6>
+                                <p class="small mb-0">This faculty advisor currently has no active student advisees assigned.</p>
+                            </div>
+                        <?php else: ?>
+                            <div class="table-responsive">
+                                <table class="table table-hover table-striped mb-0 align-middle">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Student ID</th>
+                                            <th>Student Name</th>
+                                            <th>Email</th>
+                                            <th>Standing</th>
+                                            <th>Attendance</th>
+                                            <th>Department</th>
+                                            <th>Major(s)</th>
+                                            <th>Date Assigned</th>
+                                            <th>Holds</th>
+                                            <th class="text-end pe-3">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($facultyAdvisees as $adv): ?>
+                                            <tr>
+                                                <td><strong><?= (int)$adv['Student_ID'] ?></strong></td>
+                                                <td>
+                                                    <a href="user_profile.php?user_id=<?= (int)$adv['Student_ID'] ?>" class="text-decoration-none fw-semibold text-primary">
+                                                        <?= htmlspecialchars($adv['User_FName'] . ' ' . $adv['User_LName'], ENT_QUOTES, 'UTF-8') ?>
+                                                    </a>
+                                                </td>
+                                                <td>
+                                                    <a href="mailto:<?= htmlspecialchars($adv['User_Email'] ?? '', ENT_QUOTES, 'UTF-8') ?>" class="text-muted small">
+                                                        <?= htmlspecialchars($adv['User_Email'] ?? 'N/A', ENT_QUOTES, 'UTF-8') ?>
+                                                    </a>
+                                                </td>
+                                                <td><span class="badge bg-secondary"><?= htmlspecialchars($adv['Student_Type'] ?? 'Undergrad', ENT_QUOTES, 'UTF-8') ?></span></td>
+                                                <td><small class="text-muted"><?= htmlspecialchars($adv['Attendance_Type'] ?? 'Full-Time', ENT_QUOTES, 'UTF-8') ?></small></td>
+                                                <td><small><?= htmlspecialchars($adv['Department_Name'] ?? 'General', ENT_QUOTES, 'UTF-8') ?></small></td>
+                                                <td><small><?= htmlspecialchars($adv['Majors'] ?? 'Undeclared', ENT_QUOTES, 'UTF-8') ?></small></td>
+                                                <td><small class="text-muted"><?= !empty($adv['Date_Assigned']) ? date('M j, Y', strtotime($adv['Date_Assigned'])) : 'N/A' ?></small></td>
+                                                <td>
+                                                    <?php if ((int)($adv['Active_Holds_Count'] ?? 0) > 0): ?>
+                                                        <span class="badge bg-danger"><?= (int)$adv['Active_Holds_Count'] ?> Hold(s)</span>
+                                                    <?php else: ?>
+                                                        <span class="badge bg-success">Clear</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td class="text-end pe-3">
+                                                    <a href="user_profile.php?user_id=<?= (int)$adv['Student_ID'] ?>" class="btn btn-outline-primary btn-sm py-0 px-2" style="font-size: 0.8rem;">
+                                                        View Profile &rarr;
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            <?php endif; ?>
+
+        <?php endif; ?>
+
     </div>
 
     <!-- Bootstrap 5.3 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-

@@ -1,7 +1,7 @@
 <?php
 /**
  * Lucid University Course Registration System
- * Admin Portal - Process Major Updates & Course Requirements
+ * Admin Portal - Process Minor Updates & Course Requirements
  */
 
 require_once 'admin_guard.php';
@@ -12,11 +12,11 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     exit;
 }
 
-$major_id = isset($_POST['major_id']) ? (int)$_POST['major_id'] : 0;
+$minor_id = isset($_POST['minor_id']) ? (int)$_POST['minor_id'] : 0;
 $action   = trim($_POST['action'] ?? '');
 
-if ($major_id <= 0) {
-    $_SESSION['error_message'] = "Invalid Major ID specified.";
+if ($minor_id <= 0) {
+    $_SESSION['error_message'] = "Invalid Minor ID specified.";
     header("Location: majors_minors.php");
     exit;
 }
@@ -26,12 +26,16 @@ try {
     requireAdminWriteAccess();
 
     if ($action === 'update_metadata') {
-        $major_name          = trim($_POST['major_name'] ?? '');
+        $minor_name          = trim($_POST['minor_name'] ?? '');
+        $program_level       = trim($_POST['program_level'] ?? 'Undergraduate');
         $department_id       = isset($_POST['department_id']) ? (int)$_POST['department_id'] : 0;
         $no_credits_required = isset($_POST['no_credits_required']) ? (int)$_POST['no_credits_required'] : 0;
 
-        if (empty($major_name)) {
-            throw new Exception("Major program name cannot be empty.");
+        if (empty($minor_name)) {
+            throw new Exception("Minor track name cannot be empty.");
+        }
+        if (!in_array($program_level, ['Undergraduate', 'Graduate', 'Ph.D.'], true)) {
+            throw new Exception("Please select a valid program level (Undergraduate, Graduate, or Ph.D.).");
         }
         if ($department_id <= 0) {
             throw new Exception("Please select a valid academic department.");
@@ -40,30 +44,30 @@ try {
             throw new Exception("Required credits must be greater than zero.");
         }
 
-        // Check duplicate name within department for other majors
-        $dupStmt = $conn->prepare("SELECT Major_ID FROM MAJORS WHERE Department_ID = ? AND Major_Name = ? AND Major_ID <> ?");
-        $dupStmt->bind_param("isi", $department_id, $major_name, $major_id);
+        // Check duplicate name within department for other minors
+        $dupStmt = $conn->prepare("SELECT Minor_ID FROM MINORS WHERE Department_ID = ? AND Minor_Name = ? AND Minor_ID <> ?");
+        $dupStmt->bind_param("isi", $department_id, $minor_name, $minor_id);
         $dupStmt->execute();
         if ($dupStmt->get_result()->num_rows > 0) {
             $dupStmt->close();
-            throw new Exception("A major named '{$major_name}' already exists in that department.");
+            throw new Exception("A minor named '{$minor_name}' already exists in that department.");
         }
         $dupStmt->close();
 
-        // Update MAJORS
+        // Update MINORS
         $updStmt = $conn->prepare("
-            UPDATE MAJORS 
-            SET Major_Name = ?, Department_ID = ?, No_Credits_Required = ?
-            WHERE Major_ID = ?
+            UPDATE MINORS 
+            SET Minor_Name = ?, Program_Level = ?, Department_ID = ?, No_Credits_Required = ?
+            WHERE Minor_ID = ?
         ");
-        $updStmt->bind_param("siii", $major_name, $department_id, $no_credits_required, $major_id);
+        $updStmt->bind_param("ssiii", $minor_name, $program_level, $department_id, $no_credits_required, $minor_id);
         if (!$updStmt->execute()) {
-            throw new Exception("Failed to update major attributes: " . $updStmt->error);
+            throw new Exception("Failed to update minor attributes: " . $updStmt->error);
         }
         $updStmt->close();
 
-        $_SESSION['success_message'] = "Major '{$major_name}' attributes successfully updated!";
-        header("Location: edit_major.php?id=" . $major_id);
+        $_SESSION['success_message'] = "Minor track '{$minor_name}' attributes successfully updated!";
+        header("Location: edit_minor.php?id=" . $minor_id);
         exit;
 
     } elseif ($action === 'add_course') {
@@ -89,18 +93,18 @@ try {
 
         // Insert requirement
         $insStmt = $conn->prepare("
-            INSERT INTO MAJOR_REQUIREMENTS (Major_ID, Course_ID, Min_Grade)
+            INSERT INTO MINOR_REQUIREMENTS (Minor_ID, Course_ID, Min_Grade)
             VALUES (?, ?, ?)
             ON DUPLICATE KEY UPDATE Min_Grade = VALUES(Min_Grade)
         ");
-        $insStmt->bind_param("iss", $major_id, $course_id, $min_grade);
+        $insStmt->bind_param("iss", $minor_id, $course_id, $min_grade);
         if (!$insStmt->execute()) {
             throw new Exception("Failed to add course requirement: " . $insStmt->error);
         }
         $insStmt->close();
 
-        $_SESSION['success_message'] = "Course {$course_id} added to major requirements with minimum grade {$min_grade}.";
-        header("Location: edit_major.php?id=" . $major_id);
+        $_SESSION['success_message'] = "Course {$course_id} added to minor requirements with minimum grade {$min_grade}.";
+        header("Location: edit_minor.php?id=" . $minor_id);
         exit;
 
     } elseif ($action === 'remove_course') {
@@ -110,15 +114,15 @@ try {
             throw new Exception("Course ID cannot be empty.");
         }
 
-        $delStmt = $conn->prepare("DELETE FROM MAJOR_REQUIREMENTS WHERE Major_ID = ? AND Course_ID = ?");
-        $delStmt->bind_param("is", $major_id, $course_id);
+        $delStmt = $conn->prepare("DELETE FROM MINOR_REQUIREMENTS WHERE Minor_ID = ? AND Course_ID = ?");
+        $delStmt->bind_param("is", $minor_id, $course_id);
         if (!$delStmt->execute()) {
             throw new Exception("Failed to delete course requirement: " . $delStmt->error);
         }
         $delStmt->close();
 
-        $_SESSION['success_message'] = "Course {$course_id} removed from major requirements.";
-        header("Location: edit_major.php?id=" . $major_id);
+        $_SESSION['success_message'] = "Course {$course_id} removed from minor requirements.";
+        header("Location: edit_minor.php?id=" . $minor_id);
         exit;
 
     } else {
@@ -127,7 +131,7 @@ try {
 
 } catch (Exception $e) {
     $_SESSION['error_message'] = $e->getMessage();
-    header("Location: edit_major.php?id=" . $major_id);
+    header("Location: edit_minor.php?id=" . $minor_id);
     exit;
 }
-?>
+

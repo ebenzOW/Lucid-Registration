@@ -5,6 +5,37 @@
 -- ============================================================================
 
 -- ============================================================================
+-- IDEMPOTENT SCHEMA MIGRATION (For Existing Databases)
+-- ============================================================================
+ALTER TABLE ENROLLMENT
+ADD COLUMN IF NOT EXISTS Midterm_Grade VARCHAR(5) NULL DEFAULT NULL AFTER Student_ID;
+
+CREATE TABLE IF NOT EXISTS ATTENDANCE (
+    CRN INT NOT NULL,
+    Student_ID INT NOT NULL,
+    Class_Date DATE NOT NULL,
+    Status ENUM('Present', 'Absent') NOT NULL DEFAULT 'Absent',
+    Recorded_At DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (CRN, Student_ID, Class_Date),
+    FOREIGN KEY (CRN, Student_ID) REFERENCES ENROLLMENT(CRN, Student_ID) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+ALTER TABLE MAJORS
+ADD COLUMN IF NOT EXISTS Program_Level ENUM('Undergraduate', 'Graduate', 'Ph.D.') NOT NULL DEFAULT 'Undergraduate' AFTER Major_Name;
+
+ALTER TABLE MINORS
+ADD COLUMN IF NOT EXISTS Program_Level ENUM('Undergraduate', 'Graduate', 'Ph.D.') NOT NULL DEFAULT 'Undergraduate' AFTER Minor_Name;
+
+-- Backfill existing MAJORS levels from program titles
+UPDATE MAJORS SET Program_Level = 'Ph.D.'
+WHERE Major_Name LIKE '%Ph.D.%' OR Major_Name LIKE '%Doctor%';
+
+UPDATE MAJORS SET Program_Level = 'Graduate'
+WHERE Program_Level = 'Undergraduate'
+  AND (Major_Name LIKE '%M.S.%' OR Major_Name LIKE '%M.A.%' OR Major_Name LIKE '%M.F.A.%' OR Major_Name LIKE '%Master%');
+-- ============================================================================
+
+-- ============================================================================
 -- 1. CAMPUS FACILITIES & ROOM INFRASTRUCTURE
 -- ============================================================================
 
@@ -216,6 +247,7 @@ CREATE TABLE IF NOT EXISTS MAJORS (
     Major_ID INT NOT NULL,
     Department_ID INT NOT NULL,
     Major_Name VARCHAR(100) NOT NULL,
+    Program_Level ENUM('Undergraduate', 'Graduate', 'Ph.D.') NOT NULL DEFAULT 'Undergraduate',
     No_Credits_Required INT NOT NULL,
     PRIMARY KEY (Major_ID),
     FOREIGN KEY (Department_ID) REFERENCES DEPARTMENT(Department_ID) ON DELETE CASCADE
@@ -225,6 +257,7 @@ CREATE TABLE IF NOT EXISTS MINORS (
     Minor_ID INT NOT NULL,
     Department_ID INT NOT NULL,
     Minor_Name VARCHAR(100) NOT NULL,
+    Program_Level ENUM('Undergraduate', 'Graduate', 'Ph.D.') NOT NULL DEFAULT 'Undergraduate',
     No_Credits_Required INT NOT NULL,
     PRIMARY KEY (Minor_ID),
     FOREIGN KEY (Department_ID) REFERENCES DEPARTMENT(Department_ID) ON DELETE CASCADE
@@ -413,10 +446,21 @@ CREATE TABLE IF NOT EXISTS COURSE_SECTIONS (
 CREATE TABLE IF NOT EXISTS ENROLLMENT (
     CRN INT NOT NULL,
     Student_ID INT NOT NULL,
+    Midterm_Grade VARCHAR(5) NULL DEFAULT NULL,
     Grade VARCHAR(2),
     PRIMARY KEY (CRN, Student_ID),
     FOREIGN KEY (CRN) REFERENCES COURSE_SECTIONS(CRN) ON DELETE CASCADE,
     FOREIGN KEY (Student_ID) REFERENCES STUDENT(Student_ID) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS ATTENDANCE (
+    CRN INT NOT NULL,
+    Student_ID INT NOT NULL,
+    Class_Date DATE NOT NULL,
+    Status ENUM('Present', 'Absent') NOT NULL DEFAULT 'Absent',
+    Recorded_At DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (CRN, Student_ID, Class_Date),
+    FOREIGN KEY (CRN, Student_ID) REFERENCES ENROLLMENT(CRN, Student_ID) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS FACULTY_HISTORY (
