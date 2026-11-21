@@ -3,8 +3,8 @@ require_once 'student_guard.php';
 $student_id = (int)$userID;
 
 require_once '../db_connect.php';
-require_once __DIR__ . '/../includes/academic_helpers.php';
-require_once '../profile_hover_card.php';
+require_once __DIR__ . '/../includes/ui_helpers.php';
+require_once __DIR__ . '/../includes/student_helpers.php';
 
 // Fetch profile and transcript data
 $profile = getStudentProfile($conn, $student_id);
@@ -31,9 +31,6 @@ $total_credits = $transcript['total_credits'];
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Unofficial Transcript - Lucid University</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        <?= getProfileHoverCardStyles() ?>
-    </style>
 </head>
 <body class="bg-light">
 

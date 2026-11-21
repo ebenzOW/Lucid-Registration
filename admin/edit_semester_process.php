@@ -6,22 +6,20 @@
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
+require_once __DIR__ . '/../includes/auth_helpers.php';
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: semesters.php");
     exit;
 }
 
-$semester_id = isset($_POST['semester_id']) ? (int)$_POST['semester_id'] : 0;
 $isNew = !empty($_POST['is_new']) && $_POST['is_new'] === '1';
+$semester_id = isset($_POST['semester_id']) ? (int)$_POST['semester_id'] : 0;
+$inTransaction = false;
 
 try {
     // 1. Enforce admin write permission (Security Level >= 2)
     requireAdminWriteAccess();
-
-    if ($semester_id <= 0) {
-        throw new Exception("Invalid Semester ID provided.");
-    }
 
     $semester_name = trim($_POST['semester_name'] ?? '');
     $semester_year = isset($_POST['semester_year']) ? (int)$_POST['semester_year'] : 0;
@@ -38,48 +36,104 @@ try {
         throw new Exception("Please fill in all required semester fields.");
     }
 
+    if ($semester_year < 2020 || $semester_year > 2050) {
+        throw new Exception("Academic year must be between 2020 and 2050.");
+    }
+
     if (empty($last_day_reg) || empty($last_day_drop) || empty($midterm_grades) || empty($final_grades)) {
         throw new Exception("Please specify all academic calendar deadlines for this term.");
     }
 
-    // 3. Date chronology checks
-    if ($start_date > $end_date) {
-        throw new Exception("Term Start Date ({$start_date}) cannot be after Term End Date ({$end_date}).");
+    // Term codes mapping: Spring => 01, Summer => 05, Fall => 08, Winter => 12
+    $termCodes = [
+        'Spring' => '01',
+        'Summer' => '05',
+        'Fall'   => '08',
+        'Winter' => '12',
+    ];
+
+    if (!isset($termCodes[$semester_name])) {
+        throw new Exception("Invalid semester term selected: '{$semester_name}'.");
+    }
+
+    // Compute or verify Semester_ID strictly
+    if ($isNew) {
+        $semester_id = (int)($semester_year . $termCodes[$semester_name]);
+    } else {
+        if ($semester_id <= 0) {
+            throw new Exception("Invalid Semester ID provided.");
+        }
+    }
+
+    // 3. Sensible calendar window validation
+    $y = $semester_year;
+    switch ($semester_name) {
+        case 'Spring':
+            $sMin = "{$y}-01-01"; $sMax = "{$y}-02-29";
+            $eMin = "{$y}-04-01"; $eMax = "{$y}-06-15";
+            break;
+        case 'Summer':
+            $sMin = "{$y}-05-01"; $sMax = "{$y}-06-30";
+            $eMin = "{$y}-07-01"; $eMax = "{$y}-08-31";
+            break;
+        case 'Fall':
+            $sMin = "{$y}-08-01"; $sMax = "{$y}-09-30";
+            $eMin = "{$y}-11-15"; $eMax = "{$y}-12-31";
+            break;
+        case 'Winter':
+            $yNext = $y + 1;
+            $sMin = "{$y}-12-01"; $sMax = "{$y}-12-31";
+            $eMin = "{$yNext}-01-05"; $eMax = "{$yNext}-01-31";
+            break;
+        default:
+            throw new Exception("Invalid semester term selected.");
+    }
+
+    if ($start_date < $sMin || $start_date > $sMax) {
+        throw new Exception("Term Start Date ({$start_date}) is outside the permitted window ({$sMin} to {$sMax}) for {$semester_name} {$y}.");
+    }
+    if ($end_date < $eMin || $end_date > $eMax) {
+        throw new Exception("Term End Date ({$end_date}) is outside the permitted window ({$eMin} to {$eMax}) for {$semester_name} {$y}.");
+    }
+
+    // 4. Chronological date sequence checks
+    if ($start_date >= $end_date) {
+        throw new Exception("Term Start Date ({$start_date}) must precede Term End Date ({$end_date}).");
+    }
+
+    if ($start_date > $last_day_reg) {
+        throw new Exception("Term Start Date ({$start_date}) cannot be after the registration deadline ({$last_day_reg}).");
     }
 
     if ($last_day_reg > $last_day_drop) {
         throw new Exception("Registration cutoff ({$last_day_reg}) cannot be after the add/drop deadline ({$last_day_drop}).");
     }
 
-    if ($midterm_grades > $final_grades) {
-        throw new Exception("Midterm grading recording date ({$midterm_grades}) cannot be after final grading date ({$final_grades}).");
+    if ($last_day_drop > $midterm_grades) {
+        throw new Exception("Last day to drop courses ({$last_day_drop}) cannot be after the midterm grade recording date ({$midterm_grades}).");
+    }
+
+    if ($midterm_grades >= $final_grades) {
+        throw new Exception("Midterm grading recording date ({$midterm_grades}) must precede final grading date ({$final_grades}).");
+    }
+
+    if ($final_grades > $end_date) {
+        throw new Exception("Final grades deadline ({$final_grades}) cannot be after term end date ({$end_date}).");
     }
 
     $today = date('Y-m-d');
 
-    // 4. Past term constraint validation per SRS
-    if (!$isNew) {
-        $checkStmt = $conn->prepare("SELECT End_Date FROM SEMESTER WHERE Semester_ID = ?");
-        $checkStmt->bind_param("i", $semester_id);
-        $checkStmt->execute();
-        $existing = $checkStmt->get_result()->fetch_assoc();
-        $checkStmt->close();
-
-        if ($existing && $today > $existing['End_Date']) {
-            throw new Exception("Cannot modify past semester schedules per university SRS constraints.");
-        }
-    }
-
     $conn->begin_transaction();
+    $inTransaction = true;
 
     if ($isNew) {
-        // Verify Semester_ID uniqueness
-        $dupStmt = $conn->prepare("SELECT Semester_ID FROM SEMESTER WHERE Semester_ID = ?");
+        // Verify Semester_ID uniqueness with FOR UPDATE
+        $dupStmt = $conn->prepare("SELECT Semester_ID FROM SEMESTER WHERE Semester_ID = ? FOR UPDATE");
         $dupStmt->bind_param("i", $semester_id);
         $dupStmt->execute();
         if ($dupStmt->get_result()->num_rows > 0) {
             $dupStmt->close();
-            throw new Exception("A semester with ID {$semester_id} already exists in the system.");
+            throw new Exception("A semester with ID {$semester_id} ({$semester_name} {$semester_year}) already exists in the system.");
         }
         $dupStmt->close();
 
@@ -107,9 +161,27 @@ try {
         }
         $irStmt->close();
 
+        $conn->commit();
+        $inTransaction = false;
+
         $_SESSION['success_message'] = "Academic Semester {$semester_name} {$semester_year} (ID: {$semester_id}) and calendar deadlines successfully configured!";
     } else {
-        // Update SEMESTER
+        // Verify existence & past term constraint per SRS with FOR UPDATE
+        $checkStmt = $conn->prepare("SELECT Semester_ID, End_Date FROM SEMESTER WHERE Semester_ID = ? FOR UPDATE");
+        $checkStmt->bind_param("i", $semester_id);
+        $checkStmt->execute();
+        $existing = $checkStmt->get_result()->fetch_assoc();
+        $checkStmt->close();
+
+        if (!$existing) {
+            throw new Exception("Semester ID {$semester_id} was not found.");
+        }
+
+        if ($today > $existing['End_Date']) {
+            throw new Exception("Cannot modify past semester schedules per university SRS constraints.");
+        }
+
+        // Update SEMESTER (Semester_ID is immutable)
         $updStmt = $conn->prepare("
             UPDATE SEMESTER 
             SET Semester_Name = ?, Semester_Year = ?, Start_Date = ?, End_Date = ?
@@ -139,16 +211,18 @@ try {
         }
         $irUpdStmt->close();
 
+        $conn->commit();
+        $inTransaction = false;
+
         $_SESSION['success_message'] = "Academic Semester {$semester_name} {$semester_year} (ID: {$semester_id}) dates and deadlines successfully updated!";
     }
 
-    $conn->commit();
     header("Location: semesters.php");
     exit;
 
 } catch (Exception $e) {
-    if (isset($conn) && $conn instanceof mysqli && $conn->connect_errno === 0) {
-        @$conn->rollback();
+    if ($inTransaction) {
+        $conn->rollback();
     }
     $_SESSION['error_message'] = $e->getMessage();
     if ($semester_id > 0 && !$isNew) {
@@ -158,4 +232,3 @@ try {
     }
     exit;
 }
-

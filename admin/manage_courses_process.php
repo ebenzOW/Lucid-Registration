@@ -6,6 +6,8 @@
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
+require_once __DIR__ . '/../includes/auth_helpers.php';
+require_once __DIR__ . '/../includes/schedule_helpers.php';
 
 $admin_id = (int)$userID;
 
@@ -16,12 +18,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $action = $_POST['action'] ?? '';
+$inTransaction = false;
 
 try {
     // Enforce Security Level >= 2
     requireAdminWriteAccess();
 
     $conn->begin_transaction();
+    $inTransaction = true;
 
     if ($action === 'create_course') {
         $course_id          = strtoupper(trim($_POST['course_id'] ?? ''));
@@ -125,6 +129,7 @@ try {
         }
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Course {$course_id} ({$course_name}) was successfully created with " . count($cleanPrereqs) . " prerequisite(s).";
 
     } elseif ($action === 'update_course') {
@@ -203,15 +208,9 @@ try {
                     throw new Exception("An Undergraduate course cannot require a Graduate prerequisite course ({$pid}).");
                 }
 
-                // Check direct circular prerequisite: A <-> B (does pid already require course_id?)
-                $circStmt = $conn->prepare("SELECT 1 FROM COURSE_PREREQUISITE WHERE Course_ID = ? AND Prerequisite_Course_ID = ?");
-                $circStmt->bind_param("ss", $pid, $course_id);
-                $circStmt->execute();
-                $isCircular = $circStmt->get_result()->fetch_assoc();
-                $circStmt->close();
-
-                if ($isCircular) {
-                    throw new Exception("Direct circular prerequisite conflict detected: '{$pid}' already has '{$course_id}' listed as a prerequisite.");
+                // Check circular prerequisite using iterative BFS (direct and transitive)
+                if (hasPrerequisiteCycle($conn, $course_id, $pid)) {
+                    throw new Exception("Prerequisite dependency cycle detected: adding '{$pid}' would create a circular dependency involving '{$course_id}'.");
                 }
 
                 $cleanPrereqs[] = $pid;
@@ -225,7 +224,7 @@ try {
             SET Course_Type = ?, Course_Name = ?, Course_Description = ?, Course_Credits = ?, Department_ID = ?
             WHERE Course_ID = ?
         ");
-        $upd->bind_param("sssiss", $course_type, $course_name, $course_description, $course_credits, $department_id, $course_id);
+        $upd->bind_param("sssiis", $course_type, $course_name, $course_description, $course_credits, $department_id, $course_id);
         $upd->execute();
         $upd->close();
 
@@ -245,6 +244,7 @@ try {
         }
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Course {$course_id} was successfully updated with " . count($cleanPrereqs) . " prerequisite(s).";
 
     } elseif ($action === 'delete_course') {
@@ -316,6 +316,7 @@ try {
         $delC->close();
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Course '{$course_id}' was successfully deleted from the catalog.";
 
     } else {
@@ -323,7 +324,7 @@ try {
     }
 
 } catch (Exception $e) {
-    if (isset($conn) && $conn->in_transaction) {
+    if ($inTransaction) {
         $conn->rollback();
     }
     $_SESSION['error_message'] = $e->getMessage();

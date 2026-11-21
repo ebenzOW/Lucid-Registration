@@ -9,7 +9,7 @@
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
-require_once __DIR__ . '/../includes/academic_helpers.php';
+require_once __DIR__ . '/../includes/auth_helpers.php';
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: majors_minors.php");
@@ -17,6 +17,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 }
 
 $action = trim($_POST['action'] ?? '');
+$inTransaction = false;
 
 try {
     // 1. Enforce admin write permission (Security Level >= 2)
@@ -46,6 +47,7 @@ try {
         }
 
         $conn->begin_transaction();
+        $inTransaction = true;
 
         $dupStmt = $conn->prepare("SELECT 1 FROM MAJORS WHERE Major_ID = ? FOR UPDATE");
         $dupStmt->bind_param("i", $major_id);
@@ -64,6 +66,7 @@ try {
         $insStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Academic Major '{$major_name}' (ID: {$major_id}) was successfully created!";
         header("Location: majors_minors.php");
         exit;
@@ -92,6 +95,7 @@ try {
         }
 
         $conn->begin_transaction();
+        $inTransaction = true;
 
         $checkStmt = $conn->prepare("SELECT 1 FROM MAJORS WHERE Major_ID = ? FOR UPDATE");
         $checkStmt->bind_param("i", $major_id);
@@ -110,6 +114,7 @@ try {
         $updStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Major '{$major_name}' was successfully updated!";
         header("Location: edit_major.php?id=" . $major_id);
         exit;
@@ -124,6 +129,7 @@ try {
         }
 
         $conn->begin_transaction();
+        $inTransaction = true;
 
         $insStmt = $conn->prepare("
             INSERT INTO MAJOR_REQUIREMENTS (Major_ID, Course_ID, Min_Grade)
@@ -137,6 +143,7 @@ try {
         $insStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Course requirement {$course_id} (Min Grade: {$min_grade}) added to major!";
         header("Location: edit_major.php?id=" . $major_id);
         exit;
@@ -150,6 +157,7 @@ try {
         }
 
         $conn->begin_transaction();
+        $inTransaction = true;
 
         $delStmt = $conn->prepare("DELETE FROM MAJOR_REQUIREMENTS WHERE Major_ID = ? AND Course_ID = ?");
         $delStmt->bind_param("is", $major_id, $course_id);
@@ -159,6 +167,7 @@ try {
         $delStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Course {$course_id} removed from major requirements.";
         header("Location: edit_major.php?id=" . $major_id);
         exit;
@@ -187,6 +196,7 @@ try {
         }
 
         $conn->begin_transaction();
+        $inTransaction = true;
 
         $dupStmt = $conn->prepare("SELECT 1 FROM MINORS WHERE Minor_ID = ? FOR UPDATE");
         $dupStmt->bind_param("i", $minor_id);
@@ -205,6 +215,7 @@ try {
         $insStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Academic Minor '{$minor_name}' (ID: {$minor_id}) was successfully created!";
         header("Location: majors_minors.php");
         exit;
@@ -233,6 +244,7 @@ try {
         }
 
         $conn->begin_transaction();
+        $inTransaction = true;
 
         $checkStmt = $conn->prepare("SELECT 1 FROM MINORS WHERE Minor_ID = ? FOR UPDATE");
         $checkStmt->bind_param("i", $minor_id);
@@ -251,6 +263,7 @@ try {
         $updStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Minor '{$minor_name}' was successfully updated!";
         header("Location: edit_minor.php?id=" . $minor_id);
         exit;
@@ -265,6 +278,7 @@ try {
         }
 
         $conn->begin_transaction();
+        $inTransaction = true;
 
         $insStmt = $conn->prepare("
             INSERT INTO MINOR_REQUIREMENTS (Minor_ID, Course_ID, Min_Grade)
@@ -278,6 +292,7 @@ try {
         $insStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Course requirement {$course_id} (Min Grade: {$min_grade}) added to minor!";
         header("Location: edit_minor.php?id=" . $minor_id);
         exit;
@@ -291,6 +306,7 @@ try {
         }
 
         $conn->begin_transaction();
+        $inTransaction = true;
 
         $delStmt = $conn->prepare("DELETE FROM MINOR_REQUIREMENTS WHERE Minor_ID = ? AND Course_ID = ?");
         $delStmt->bind_param("is", $minor_id, $course_id);
@@ -300,6 +316,7 @@ try {
         $delStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Course {$course_id} removed from minor requirements.";
         header("Location: edit_minor.php?id=" . $minor_id);
         exit;
@@ -309,8 +326,9 @@ try {
     }
 
 } catch (Exception $e) {
-    if (isset($conn) && $conn->in_transaction) {
+    if ($inTransaction) {
         $conn->rollback();
+        $inTransaction = false;
     }
     $_SESSION['error_message'] = $e->getMessage();
     header("Location: majors_minors.php");

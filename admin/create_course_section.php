@@ -11,8 +11,8 @@
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
-require_once __DIR__ . '/../includes/academic_helpers.php';
-require_once '../profile_hover_card.php';
+require_once __DIR__ . '/../includes/schedule_helpers.php';
+require_once __DIR__ . '/../includes/ui_helpers.php';
 
 $admin_id = (int)$userID;
 
@@ -178,9 +178,6 @@ foreach ($rooms as $r) {
     <title>Create Course Section | Lucid University Admin</title>
     <!-- Minimal Clean Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        <?= getProfileHoverCardStyles() ?>
-    </style>
 </head>
 <body class="bg-light">
 

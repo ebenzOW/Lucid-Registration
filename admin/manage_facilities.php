@@ -9,8 +9,7 @@
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
-require_once __DIR__ . '/../includes/academic_helpers.php';
-require_once '../profile_hover_card.php';
+require_once __DIR__ . '/../includes/ui_helpers.php';
 
 $admin_id  = (int)$userID;
 $can_write = ((int)($_SESSION['Security_Level'] ?? 1) >= 2);
@@ -63,7 +62,6 @@ foreach ($rooms as $r) {
     <!-- Minimal Clean Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        <?= getProfileHoverCardStyles() ?>
         .badge-lecture { background-color: #0d6efd; color: #fff; }
         .badge-lab { background-color: #fd7e14; color: #fff; }
         .badge-office { background-color: #6c757d; color: #fff; }
@@ -158,35 +156,6 @@ foreach ($rooms as $r) {
             </div>
         </div>
 
-        <!-- Filter & Search Bar -->
-        <div class="card shadow-sm border-0 mb-4">
-            <div class="card-body p-3">
-                <div class="row g-2 align-items-center">
-                    <div class="col-md-5">
-                        <input type="search" id="facilitySearch" class="form-control form-control-sm" placeholder="Search buildings, rooms, or purpose...">
-                    </div>
-                    <div class="col-md-4">
-                        <select id="buildingFilter" class="form-select form-select-sm">
-                            <option value="">All Buildings</option>
-                            <?php foreach ($buildings as $b): ?>
-                                <option value="<?= htmlspecialchars($b['Building_ID'], ENT_QUOTES, 'UTF-8') ?>">
-                                    <?= htmlspecialchars($b['Building_Name'] . ' (' . $b['Building_ID'] . ')', ENT_QUOTES, 'UTF-8') ?>
-                                </option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <select id="roomTypeFilter" class="form-select form-select-sm">
-                            <option value="">All Room Types</option>
-                            <option value="Lecture">Lecture Hall</option>
-                            <option value="Lab">Laboratory</option>
-                            <option value="Office">Office</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <!-- Buildings Card & Table -->
         <div class="card shadow-sm border-0 mb-4">
             <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
@@ -248,6 +217,35 @@ foreach ($rooms as $r) {
                             <?php endif; ?>
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter & Search Bar (Rooms) -->
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-body p-3">
+                <div class="row g-2 align-items-center">
+                    <div class="col-md-5">
+                        <input type="search" id="facilitySearch" class="form-control form-control-sm" placeholder="Search rooms by ID, building, or room number...">
+                    </div>
+                    <div class="col-md-4">
+                        <select id="buildingFilter" class="form-select form-select-sm">
+                            <option value="">All Buildings</option>
+                            <?php foreach ($buildings as $b): ?>
+                                <option value="<?= htmlspecialchars($b['Building_ID'], ENT_QUOTES, 'UTF-8') ?>">
+                                    <?= htmlspecialchars($b['Building_Name'] . ' (' . $b['Building_ID'] . ')', ENT_QUOTES, 'UTF-8') ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <select id="roomTypeFilter" class="form-select form-select-sm">
+                            <option value="">All Room Types</option>
+                            <option value="Lecture">Lecture Hall</option>
+                            <option value="Lab">Laboratory</option>
+                            <option value="Office">Office</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </div>
@@ -435,8 +433,9 @@ foreach ($rooms as $r) {
                                 <input type="text" name="room_no" id="r_no" class="form-control" maxlength="10" placeholder="e.g. 101, 204B" required>
                             </div>
                             <div class="col-6">
-                                <label for="r_id" class="form-label small fw-bold">Room ID <span class="text-danger">*</span></label>
-                                <input type="text" name="room_id" id="r_id" class="form-control text-uppercase font-monospace" maxlength="15" placeholder="e.g. SCI-101" required>
+                                <label for="r_id" class="form-label small fw-bold">Room ID</label>
+                                <input type="text" name="room_id" id="r_id" class="form-control bg-light text-uppercase font-monospace" maxlength="15" placeholder="Auto-generated" readonly required>
+                                <div class="form-text small">Automatically generated from Building ID and Room Number.</div>
                             </div>
                         </div>
                         <div class="row g-2 mb-3">
@@ -532,19 +531,7 @@ foreach ($rooms as $r) {
             const selBuilding = (buildingFilter.value || '').trim();
             const selType = (roomTypeFilter.value || '').trim();
 
-            // Filter Buildings Table
-            document.querySelectorAll('.building-row').forEach(row => {
-                const bId = row.dataset.buildingId || '';
-                const bName = row.dataset.buildingName || '';
-                const bPurpose = row.dataset.purpose || '';
-
-                const matchesQuery = !query || bId.includes(query) || bName.includes(query) || bPurpose.includes(query);
-                const matchesBuilding = !selBuilding || bId.toUpperCase() === selBuilding.toUpperCase();
-
-                row.style.display = (matchesQuery && matchesBuilding) ? '' : 'none';
-            });
-
-            // Filter Rooms Table
+            // Filter Rooms Table only (Buildings Table remains permanently visible)
             document.querySelectorAll('.room-row').forEach(row => {
                 const rId = row.dataset.roomId || '';
                 const rBldId = row.dataset.buildingId || '';
@@ -564,28 +551,20 @@ foreach ($rooms as $r) {
         if (buildingFilter) buildingFilter.addEventListener('change', applyFilters);
         if (roomTypeFilter) roomTypeFilter.addEventListener('change', applyFilters);
 
-        // Auto-suggest Room ID on Add Room
+        // Auto-generate Room ID on Add Room (strictly Building_ID - Room_NO)
         const rBldSelect = document.getElementById('r_building_id');
         const rNoInput   = document.getElementById('r_no');
         const rIdInput   = document.getElementById('r_id');
 
-        function autoSuggestRoomId() {
+        function autoGenerateRoomId() {
             if (rBldSelect && rNoInput && rIdInput) {
                 const bCode = (rBldSelect.value || '').trim();
                 const no = (rNoInput.value || '').trim();
-                if (bCode && no && (!rIdInput.value || rIdInput.dataset.autoGenerated === 'true')) {
-                    rIdInput.value = `${bCode}-${no}`.toUpperCase();
-                    rIdInput.dataset.autoGenerated = 'true';
-                }
+                rIdInput.value = (bCode && no) ? `${bCode}-${no}`.toUpperCase() : '';
             }
         }
-        if (rBldSelect) rBldSelect.addEventListener('change', autoSuggestRoomId);
-        if (rNoInput) rNoInput.addEventListener('input', autoSuggestRoomId);
-        if (rIdInput) {
-            rIdInput.addEventListener('input', function() {
-                rIdInput.dataset.autoGenerated = 'false';
-            });
-        }
+        if (rBldSelect) rBldSelect.addEventListener('change', autoGenerateRoomId);
+        if (rNoInput) rNoInput.addEventListener('input', autoGenerateRoomId);
 
         // Edit Building Modal Wireup
         const editBuildingModal = document.getElementById('editBuildingModal');

@@ -1,26 +1,9 @@
 <?php
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
-require_once __DIR__ . '/../includes/academic_helpers.php';
-require_once '../profile_hover_card.php';
+require_once __DIR__ . '/../includes/ui_helpers.php';
 
 $admin_id = (int)$userID;
-
-$advisingKpiStmt = $conn->prepare("
-    SELECT
-        COUNT(*) AS total_ft_faculty,
-        SUM(CASE WHEN COALESCE(ac.advisee_cnt, 0) < 15 THEN 1 ELSE 0 END) AS eligible_faculty_count,
-        SUM(CASE WHEN COALESCE(ac.advisee_cnt, 0) >= 15 THEN 1 ELSE 0 END) AS full_faculty_count
-    FROM FULL_TIME_FACULTY ft
-    LEFT JOIN (
-        SELECT Faculty_ID, COUNT(*) AS advisee_cnt
-        FROM ADVISOR_STUDENT
-        GROUP BY Faculty_ID
-    ) ac ON ft.Faculty_ID = ac.Faculty_ID
-");
-$advisingKpiStmt->execute();
-$stats = $advisingKpiStmt->get_result()->fetch_assoc();
-$advisingKpiStmt->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -30,9 +13,6 @@ $advisingKpiStmt->close();
     <title>Admin Dashboard | Lucid University</title>
     <!-- Minimal Clean Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        <?= getProfileHoverCardStyles() ?>
-    </style>
 </head>
 <body class="bg-light">
 

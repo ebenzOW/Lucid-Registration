@@ -1,6 +1,9 @@
 <?php
+/**
+ * Lucid University - User Creation & Account Management Helpers
+ */
 
-function generateUserID($conn)
+function generateUserID(mysqli $conn): int
 {
     do {
         $userID = random_int(100000, 9999999);
@@ -22,8 +25,7 @@ function generateUserID($conn)
     return $userID;
 }
 
-
-function createUser($conn, $userID, $data)
+function createUser(mysqli $conn, int $userID, array $data): void
 {
     $sql = "
         INSERT INTO `USER`
@@ -81,8 +83,7 @@ function createUser($conn, $userID, $data)
     $stmt->close();
 }
 
-
-function createLogin($conn, $userID, $data)
+function createLogin(mysqli $conn, int $userID, array $data): void
 {
     $password = password_hash(
         $data["password"],
@@ -112,8 +113,7 @@ function createLogin($conn, $userID, $data)
     $stmt->close();
 }
 
-
-function createAdmin($conn, $userID, $data)
+function createAdmin(mysqli $conn, int $userID, array $data): void
 {
     if (empty($data["security_level"])) {
         throw new Exception(
@@ -136,8 +136,7 @@ function createAdmin($conn, $userID, $data)
     $stmt->close();
 }
 
-
-function createStudent($conn, $userID, $data)
+function createStudent(mysqli $conn, int $userID, array $data): void
 {
     if (
         empty($data["student_year"]) ||
@@ -298,7 +297,6 @@ function createStudent($conn, $userID, $data)
 
     // Automatically assign default department major in STUDENT_MAJORS and optional eligible advisor
     if ($departmentID) {
-        // Why: Automatically assign student's default departmental major per SRS degree mapping rules.
         if ($studentType === "Undergraduate") {
             $majorId = 100 + ($departmentID * 2) - 1;
         } else {
@@ -315,7 +313,6 @@ function createStudent($conn, $userID, $data)
         $mStmt->execute();
         $mStmt->close();
 
-        // Why: Optional admin assignment of an eligible Full-Time faculty advisor in that department with < 15 advisees.
         if (!empty($data["advisor_id"])) {
             $advisorId = (int)$data["advisor_id"];
             $advCheckStmt = $conn->prepare("
@@ -347,8 +344,7 @@ function createStudent($conn, $userID, $data)
     }
 }
 
-
-function createFaculty($conn, $userID, $data)
+function createFaculty(mysqli $conn, int $userID, array $data): void
 {
     $facultyStatus = str_replace('_', '-', $data["faculty_status"] ?? "");
     if (empty($facultyStatus)) {
@@ -427,7 +423,6 @@ function createFaculty($conn, $userID, $data)
     $stmt->execute();
     $stmt->close();
 
-    // Why: Assign faculty to DEPARTMENT_ROSTER with 100% time so they are qualified to teach departmental course sections.
     $facultyDeptId = !empty($data["faculty_department_id"]) ? (int)$data["faculty_department_id"] : (!empty($data["department_id"]) ? (int)$data["department_id"] : null);
     if (!$facultyDeptId) {
         throw new Exception("Faculty department assignment is required.");
@@ -442,10 +437,8 @@ function createFaculty($conn, $userID, $data)
     $deptStmt->close();
 }
 
-
-function createStatDept($conn, $userID, $data = [])
+function createStatDept(mysqli $conn, int $userID, array $data = []): void
 {
-    // Why: Stat-Dept staff are full-time institutional research members per SRS regulations (part-time is forbidden).
     $colCheck = $conn->query("SHOW COLUMNS FROM STAT_DEPT LIKE 'Employment_Status'");
     if ($colCheck && $colCheck->num_rows > 0) {
         $stmt = $conn->prepare("INSERT INTO STAT_DEPT (Stat_ID, Employment_Status) VALUES (?, 'Full-Time')");
@@ -457,5 +450,3 @@ function createStatDept($conn, $userID, $data = [])
     $stmt->execute();
     $stmt->close();
 }
-
-?>

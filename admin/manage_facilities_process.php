@@ -13,6 +13,7 @@
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
+require_once __DIR__ . '/../includes/auth_helpers.php';
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: manage_facilities.php");
@@ -20,6 +21,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 }
 
 $action = trim($_POST['action'] ?? '');
+$inTransaction = false;
 
 try {
     // 1. Enforce admin write permission (Security Level >= 2)
@@ -41,6 +43,7 @@ try {
         }
 
         $conn->begin_transaction();
+        $inTransaction = true;
 
         // Check duplicate Building ID
         $checkStmt = $conn->prepare("SELECT 1 FROM BUILDING WHERE Building_ID = ? FOR UPDATE");
@@ -60,6 +63,7 @@ try {
         $insStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
 
         $_SESSION['success_message'] = "Building '{$building_name}' ({$building_id}) was successfully created!";
         header("Location: manage_facilities.php");
@@ -81,6 +85,7 @@ try {
         }
 
         $conn->begin_transaction();
+        $inTransaction = true;
 
         $checkStmt = $conn->prepare("SELECT 1 FROM BUILDING WHERE Building_ID = ? FOR UPDATE");
         $checkStmt->bind_param("s", $building_id);
@@ -99,26 +104,30 @@ try {
         $updStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
 
         $_SESSION['success_message'] = "Building '{$building_id}' was successfully updated!";
         header("Location: manage_facilities.php");
         exit;
 
     } elseif ($action === 'create_room') {
-        $room_id     = strtoupper(trim($_POST['room_id'] ?? ''));
         $building_id = strtoupper(trim($_POST['building_id'] ?? ''));
         $room_no     = trim($_POST['room_no'] ?? '');
         $room_type   = ucfirst(strtolower(trim($_POST['room_type'] ?? '')));
         $capacity    = (int)($_POST['capacity'] ?? 0);
 
-        if ($room_id === '' || strlen($room_id) > 15 || !preg_match('/^[A-Z0-9\-]+$/', $room_id)) {
-            throw new Exception("Room ID must be 1 to 15 alphanumeric characters or hyphens.");
-        }
         if ($building_id === '') {
             throw new Exception("Please select a valid building.");
         }
         if ($room_no === '' || strlen($room_no) > 10) {
             throw new Exception("Room Number must be 1 to 10 characters.");
+        }
+
+        // Strictly compute Room_ID server-side: Building_ID + '-' + Room_NO
+        $room_id = strtoupper($building_id . '-' . $room_no);
+
+        if (strlen($room_id) > 15 || !preg_match('/^[A-Z0-9\-]+$/', $room_id)) {
+            throw new Exception("Computed Room ID '{$room_id}' must be 1 to 15 alphanumeric characters or hyphens.");
         }
         if (!in_array($room_type, ['Lecture', 'Lab', 'Office'], true)) {
             throw new Exception("Room Type must be Lecture, Lab, or Office.");
@@ -128,6 +137,7 @@ try {
         }
 
         $conn->begin_transaction();
+        $inTransaction = true;
 
         // Verify Building exists
         $bStmt = $conn->prepare("SELECT 1 FROM BUILDING WHERE Building_ID = ? FOR UPDATE");
@@ -186,6 +196,7 @@ try {
         }
 
         $conn->commit();
+        $inTransaction = false;
 
         $_SESSION['success_message'] = "Room '{$room_id}' ({$room_type}, capacity: {$capacity}) was successfully added to building '{$building_id}'!";
         header("Location: manage_facilities.php");
@@ -215,6 +226,7 @@ try {
         }
 
         $conn->begin_transaction();
+        $inTransaction = true;
 
         // Lock existing Room row
         $rStmt = $conn->prepare("SELECT Room_Type, Building_ID, Room_NO FROM ROOM WHERE Room_ID = ? FOR UPDATE");
@@ -351,6 +363,7 @@ try {
         }
 
         $conn->commit();
+        $inTransaction = false;
 
         $_SESSION['success_message'] = "Room '{$room_id}' was successfully updated!";
         header("Location: manage_facilities.php");
@@ -361,7 +374,7 @@ try {
     }
 
 } catch (Exception $e) {
-    if (isset($conn) && $conn->in_transaction) {
+    if ($inTransaction) {
         $conn->rollback();
     }
     $_SESSION['error_message'] = $e->getMessage();

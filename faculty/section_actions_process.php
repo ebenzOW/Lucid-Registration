@@ -8,7 +8,8 @@ require_once 'faculty_guard.php';
 $faculty_id = (int)$userID;
 
 require_once '../db_connect.php';
-require_once __DIR__ . '/../includes/academic_helpers.php';
+require_once __DIR__ . '/../includes/schedule_helpers.php';
+require_once __DIR__ . '/../includes/student_helpers.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header("Location: dashboard.php");
@@ -44,6 +45,7 @@ if (!$sec) {
 }
 
 $allowedGrades = ['', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'C-', 'D+', 'D', 'F'];
+$inTransaction = false;
 
 try {
     switch ($action) {
@@ -55,6 +57,7 @@ try {
             }
 
             $conn->begin_transaction();
+            $inTransaction = true;
 
             // Lock enrolled rows for this section
             $lockStmt = $conn->prepare("SELECT Student_ID FROM ENROLLMENT WHERE CRN = ? FOR UPDATE");
@@ -83,6 +86,7 @@ try {
             $updateStmt->close();
 
             $conn->commit();
+            $inTransaction = false;
             $_SESSION['success_message'] = "Midterm grades submitted successfully.";
             header("Location: dashboard.php?roster_crn={$crn}&tab=grades#section-workspace");
             exit;
@@ -95,6 +99,7 @@ try {
             }
 
             $conn->begin_transaction();
+            $inTransaction = true;
 
             // Lock enrolled rows with current Midterm_Grade
             $lockStmt = $conn->prepare("SELECT Student_ID, Midterm_Grade FROM ENROLLMENT WHERE CRN = ? FOR UPDATE");
@@ -108,7 +113,7 @@ try {
             $lockStmt->close();
 
             $submittedFinals = $_POST['final_exam_grades'] ?? [];
-            $updateGradeStmt = $conn->prepare("UPDATE ENROLLMENT SET Grade = ? WHERE CRN = ? AND Student_ID = ?");
+            $updateGradeStmt = $conn->prepare("UPDATE ENROLLMENT SET Final_Grade = ?, Grade = ? WHERE CRN = ? AND Student_ID = ?");
 
             foreach ($enrolledData as $row) {
                 $sid = (int)$row['Student_ID'];
@@ -116,7 +121,7 @@ try {
                     $examGrade = trim((string)$submittedFinals[$sid]);
                     if ($examGrade !== '' && in_array($examGrade, $allowedGrades, true)) {
                         $finalCourseGrade = averageMidtermAndFinalGrade($row['Midterm_Grade'], $examGrade);
-                        $updateGradeStmt->bind_param("sii", $finalCourseGrade, $crn, $sid);
+                        $updateGradeStmt->bind_param("ssii", $examGrade, $finalCourseGrade, $crn, $sid);
                         $updateGradeStmt->execute();
                     }
                 }
@@ -124,6 +129,7 @@ try {
             $updateGradeStmt->close();
 
             $conn->commit();
+            $inTransaction = false;
             $_SESSION['success_message'] = "Final grades averaged with midterm grades and submitted successfully.";
             header("Location: dashboard.php?roster_crn={$crn}&tab=grades#section-workspace");
             exit;
@@ -137,6 +143,7 @@ try {
             }
 
             $conn->begin_transaction();
+            $inTransaction = true;
 
             // Lock enrolled rows
             $lockStmt = $conn->prepare("SELECT Student_ID FROM ENROLLMENT WHERE CRN = ? FOR UPDATE");
@@ -153,20 +160,22 @@ try {
                 ? array_map('intval', $_POST['present_students'])
                 : [];
 
+            $today = date('Y-m-d');
             $attStmt = $conn->prepare("
                 INSERT INTO ATTENDANCE (CRN, Student_ID, Class_Date, Status)
-                VALUES (?, ?, CURDATE(), ?)
+                VALUES (?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE Status = VALUES(Status), Recorded_At = CURRENT_TIMESTAMP
             ");
 
             foreach ($enrolledStudents as $sid) {
                 $status = in_array($sid, $presentIds, true) ? 'Present' : 'Absent';
-                $attStmt->bind_param("iis", $crn, $sid, $status);
+                $attStmt->bind_param("iiss", $crn, $sid, $today, $status);
                 $attStmt->execute();
             }
             $attStmt->close();
 
             $conn->commit();
+            $inTransaction = false;
             $_SESSION['success_message'] = "Attendance submission successful";
             header("Location: dashboard.php?roster_crn={$crn}&tab=attendance#section-workspace");
             exit;
@@ -177,8 +186,9 @@ try {
             exit;
     }
 } catch (Exception $e) {
-    if ($conn->errno) {
+    if ($inTransaction) {
         $conn->rollback();
+        $inTransaction = false;
     }
     $_SESSION['error_message'] = "Transaction error: " . $e->getMessage();
     header("Location: dashboard.php?roster_crn={$crn}&tab={$returnTab}#section-workspace");

@@ -11,8 +11,10 @@ require_once 'faculty_guard.php';
 $faculty_id = (int)$userID;
 
 require_once '../db_connect.php';
-require_once __DIR__ . '/../includes/academic_helpers.php';
-require_once '../profile_hover_card.php';
+require_once __DIR__ . '/../includes/ui_helpers.php';
+require_once __DIR__ . '/../includes/faculty_helpers.php';
+require_once __DIR__ . '/../includes/schedule_helpers.php';
+require_once __DIR__ . '/../includes/student_helpers.php';
 
 // 1. Fetch Faculty Profile and Department Details
 $faculty = getFacultyProfile($conn, $faculty_id);
@@ -92,16 +94,10 @@ if ($roster_crn) {
                 $finalOpen = isWithinGradeWindow($infoRel['Date_Of_Final_Grades_Recording'], 72);
             }
 
-            // Meeting dates and attendance records
-            $meetingMeta = getSectionMeetingDates($conn, $roster_crn);
-            $attStmt = $conn->prepare("SELECT Student_ID, Class_Date, Status FROM ATTENDANCE WHERE CRN = ?");
-            $attStmt->bind_param("i", $roster_crn);
-            $attStmt->execute();
-            $attRes = $attStmt->get_result();
-            while ($arow = $attRes->fetch_assoc()) {
-                $attendanceMap[(int)$arow['Student_ID']][$arow['Class_Date']] = $arow['Status'];
-            }
-            $attStmt->close();
+            // Meeting dates and attendance records via unified helper
+            $attMatrix = getSectionAttendanceMatrix($conn, $roster_crn);
+            $meetingMeta = $attMatrix['meeting_meta'];
+            $attendanceMap = $attMatrix['attendance_map'];
         }
     }
 }
@@ -115,7 +111,6 @@ if ($roster_crn) {
     <!-- Minimal Clean Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        <?= getProfileHoverCardStyles() ?>
         .sticky-col {
             position: sticky;
             left: 0;
@@ -279,6 +274,7 @@ if ($roster_crn) {
                                             <th>Class Standing</th>
                                             <th>Major(s)</th>
                                             <th class="text-center">Midterm Grade</th>
+                                            <th class="text-center">Final Exam Grade</th>
                                             <th class="text-center">Final Course Grade</th>
                                         </tr>
                                     </thead>
@@ -297,6 +293,13 @@ if ($roster_crn) {
                                                 <td class="text-center">
                                                     <?php if (!empty($st['Midterm_Grade'])): ?>
                                                         <span class="badge bg-secondary fs-6"><?= htmlspecialchars($st['Midterm_Grade'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                    <?php else: ?>
+                                                        <span class="text-muted fst-italic">Pending</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td class="text-center">
+                                                    <?php if (!empty($st['Final_Grade'])): ?>
+                                                        <span class="badge bg-info text-dark fs-6"><?= htmlspecialchars($st['Final_Grade'], ENT_QUOTES, 'UTF-8') ?></span>
                                                     <?php else: ?>
                                                         <span class="text-muted fst-italic">Pending</span>
                                                     <?php endif; ?>
@@ -346,7 +349,7 @@ if ($roster_crn) {
                                         <input type="hidden" name="crn" value="<?= (int)$roster_crn ?>">
                                         <input type="hidden" name="return_tab" value="attendance">
 
-                                        <div class="table-responsive" style="max-height: 500px; overflow-x: auto;">
+                                        <div id="attendance-scroll-container" class="table-responsive" style="max-height: 500px; overflow-x: auto;">
                                             <table class="table table-bordered table-hover align-middle mb-0" style="min-width: <?= max(800, count($meetingMeta['dates']) * 90 + 220) ?>px;">
                                                 <thead class="table-light sticky-top">
                                                     <tr>
@@ -358,8 +361,9 @@ if ($roster_crn) {
                                                             $d = $dInfo['date'];
                                                             $isToday = ($d === $today);
                                                             $colClass = $isToday ? 'bg-primary-subtle text-primary fw-bold' : '';
+                                                            $todayColId = $isToday ? ' id="attendance-today-col"' : '';
                                                         ?>
-                                                            <th class="text-center small <?= $colClass ?>" style="min-width: 90px;">
+                                                            <th<?= $todayColId ?> class="text-center small <?= $colClass ?>" style="min-width: 90px;">
                                                                 <div><?= htmlspecialchars($dInfo['label'], ENT_QUOTES, 'UTF-8') ?></div>
                                                                 <?php if ($isToday && $meetingMeta['is_live_now']): ?>
                                                                     <span class="badge bg-success" style="font-size: 0.65rem;">LIVE</span>
@@ -418,6 +422,16 @@ if ($roster_crn) {
                                             </button>
                                         </div>
                                     </form>
+
+                                    <script>
+                                    document.addEventListener('DOMContentLoaded', function () {
+                                        var container = document.getElementById('attendance-scroll-container');
+                                        var todayCol = document.getElementById('attendance-today-col');
+                                        if (container && todayCol) {
+                                            container.scrollLeft = Math.max(0, todayCol.offsetLeft - 260);
+                                        }
+                                    });
+                                    </script>
                                 <?php endif; ?>
                             </div>
 
@@ -498,10 +512,11 @@ if ($roster_crn) {
                                                             </select>
                                                         </td>
                                                         <td>
+                                                            <?php $curFinalExam = $st['Final_Grade'] ?? ''; ?>
                                                             <select name="final_exam_grades[<?= $sid ?>]" class="form-select form-select-sm">
                                                                 <option value="">-- Not Recorded --</option>
                                                                 <?php foreach ($gradeOptions as $opt): ?>
-                                                                    <option value="<?= $opt ?>"><?= $opt ?></option>
+                                                                    <option value="<?= $opt ?>" <?= ($curFinalExam === $opt) ? 'selected' : '' ?>><?= $opt ?></option>
                                                                 <?php endforeach; ?>
                                                             </select>
                                                         </td>

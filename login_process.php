@@ -1,6 +1,4 @@
 <?php
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
 session_start();
 require_once 'db_connect.php';
 
@@ -13,59 +11,54 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         exit;
     }
 
-    // looks up the email in the login table
     $stmt = $conn->prepare("SELECT *
                             FROM LOGIN 
-                            JOIN USER USING(User_ID)
-                            WHERE User_Email = ? ");
+                            JOIN `USER` USING(User_ID)
+                            WHERE User_Email = ?");
 
-
-    //Remove this later after successfully connecting the database to the login
     if (!$stmt) {
         die("Database error: " . $conn->error);
     }
-    //Remove above later
 
-
-    //binds the parameters and then fetchs the data
     $stmt->bind_param("s", $email);
     $stmt->execute();
     $result = $stmt->get_result();
     $stmt->close();
 
-    //checks if there is only 1 user in the DB with those credentials
     if ($result->num_rows === 1) {
         $user = $result->fetch_assoc();
 
-        if ($user["isLock"]) {
+        if (!empty($user["IsLock"])) {
             $conn->close();
             header("Location: login.php?error=locked");
             exit;
         } else {
-            //will eventually switch to this commented code for hashing the passwords
-            if(password_verify($password, $user["User_Password"])) {
-            //above will be used later on
+            if (password_verify($password, $user["User_Password"])) {
+                session_regenerate_id(true);
 
-            //if ($password === $user["User_Password"]) {
-                // Successful login and resets login attempts
                 $_SESSION["User_ID"] = $user["User_ID"];
                 $_SESSION["User_Type"] = $user["User_Type"];
 
-                unset($user["User_Password"]); //Not storing password in session cookies so remove from array
-                $_SESSION["User"] = $user; //can just do $_SESSION["User"]["User_Fname"] to access rest of info like User_Fname
+                unset($user["User_Password"]);
+                $_SESSION["User"] = $user;
 
+                if ($user["User_Type"] === "Admin") {
+                    $secStmt = $conn->prepare("SELECT Security_Level FROM ADMIN WHERE Admin_ID = ?");
+                    $secStmt->bind_param("i", $user["User_ID"]);
+                    $secStmt->execute();
+                    $secRes = $secStmt->get_result()->fetch_assoc();
+                    $secStmt->close();
+                    $_SESSION["Security_Level"] = (int)($secRes["Security_Level"] ?? 1);
+                }
 
                 $resetStmt = $conn->prepare("UPDATE LOGIN
                                             SET No_Login_Attempts = 0
                                             WHERE User_ID = ?");
                 $resetStmt->bind_param("i", $user["User_ID"]);
                 $resetStmt->execute();
-
                 $resetStmt->close();
                 $conn->close();
 
-
-                //temporary next location, will replace with different user dashboards
                 if ($_SESSION["User_Type"] === "Student") {
                     header("Location: student/dashboard.php");
                     exit;
@@ -76,32 +69,27 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     header("Location: admin/dashboard.php");
                     exit;
                 } else if ($_SESSION["User_Type"] === "Stat-Dept") {
-                    header("Location: stat_dashboard.php");
+                    header("Location: stat_dept/dashboard.php");
                     exit;
                 }
             } else {
-
-                //failed login attempt
-                $attempts = $user["No_Login_Attempts"] + 1;
+                $attempts = (int)$user["No_Login_Attempts"] + 1;
 
                 if ($attempts >= 3) {
                     $lockStmt = $conn->prepare("UPDATE LOGIN
-                                                SET No_Login_Attempts = ?, isLock = 1
+                                                SET No_Login_Attempts = ?, IsLock = 1
                                                 WHERE User_ID = ?");
                     $lockStmt->bind_param("ii", $attempts, $user["User_ID"]);
                     $lockStmt->execute();
                     $lockStmt->close();
 
                     require_once 'email_functions.php';
-
-                    //send reset code to user email and save email in session cookies to use in reset_password.php
                     sendPasswordResetCode($conn, $email);
 
                     $conn->close();
                     header("Location: reset_password.php?error=locked");
                     exit;
                 } else {
-
                     $updateStmt = $conn->prepare("UPDATE LOGIN 
                                                 SET No_Login_Attempts = ? 
                                                 WHERE User_ID = ?");
@@ -120,8 +108,4 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         header("Location: login.php?error=invalid");
         exit;
     }
-}
-//incase connection isnt closed correctly
-if (isset($conn) && $conn instanceof mysqli) {
-    $conn->close();
 }
