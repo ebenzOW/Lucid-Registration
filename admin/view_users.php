@@ -6,7 +6,8 @@
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
-require_once '../profile_hover_card.php';
+require_once __DIR__ . '/../includes/ui_helpers.php';
+require_once __DIR__ . '/../includes/student_helpers.php';
 
 $admin_id = (int)$userID;
 
@@ -246,49 +247,10 @@ $yearMap = [
     <title>User Directory &bull; <?= ucfirst($view) ?> | Lucid University Admin</title>
     <!-- Minimal Clean Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        <?= getProfileHoverCardStyles() ?>
-    </style>
 </head>
 <body class="bg-light">
 
-    <!-- Unified Admin Top Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University <span class="badge bg-danger ms-1">Admin</span></a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNav" aria-controls="adminNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="adminNav">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link" href="dashboard.php">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="create_user.php">Create User</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="view_users.php">View Users</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="create_course_section.php">Create Course Section</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="manage_courses.php">Manage Courses</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="manage_holds.php">Manage Holds</a>
-                    </li>
-                </ul>
-                <div class="d-flex align-items-center gap-3">
-                    <?= getUserNavbarProfileHtml($conn, $admin_id, 'Admin') ?>
-                    <form action="../logout.php" method="POST" class="m-0">
-                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <?= renderAdminNavbar($conn, $admin_id, basename($_SERVER['PHP_SELF'])) ?>
 
     <div class="container-fluid px-lg-5 mb-5">
 
@@ -382,7 +344,7 @@ $yearMap = [
                                 <tr>
                                     <th>User ID</th>
                                     <th>Role</th>
-                                    <th>Status</th>
+                                    <th>Login Status</th>
                                     <th>Full Name</th>
                                     <th>Email</th>
                                     <th>Gender</th>
@@ -398,7 +360,7 @@ $yearMap = [
                                     <th>Full Name</th>
                                     <th>Email</th>
                                     <th>Security Level</th>
-                                    <th>Status</th>
+                                    <th>Login Status</th>
                                     <th>Gender</th>
                                     <th>Date of Birth</th>
                                     <th>Phone</th>
@@ -462,7 +424,7 @@ $yearMap = [
                                     $fullName = trim($user["User_FName"] . ' ' . ($user["User_MName"] ? $user["User_MName"] . ' ' : '') . $user["User_LName"]);
                                     $fullAddr = trim(($user["Street_No"] ?? '') . ' ' . ($user["Street_Name"] ?? ''));
                                     $cityStateZip = trim(($user["City"] ?? '') . ($user["State"] ? ', ' . $user["State"] : '') . ' ' . ($user["Zip_Code"] ?? ''));
-                                    $combinedAddr = trim($fullAddr . ($fullAddr && $cityStateZip ? ' &bull; ' : '') . $cityStateZip);
+                                    $formattedAddr = formatAddress($user);
                                     $isLocked = !empty($user['IsLock']);
                                 ?>
                                     <?php if ($view === 'all'): 
@@ -494,7 +456,9 @@ $yearMap = [
                                                 <?php endif; ?>
                                             </td>
                                             <td class="fw-semibold">
-                                                <?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8') ?>
+                                                <a href="../user_profile.php?user_id=<?= $uid ?>" class="text-decoration-none">
+                                                    <?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8') ?>
+                                                </a>
                                             </td>
                                             <td><?= htmlspecialchars($user["User_Email"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
                                             <td><?= htmlspecialchars($user["User_Gender"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
@@ -515,7 +479,9 @@ $yearMap = [
                                                 </a>
                                             </td>
                                             <td class="fw-semibold">
-                                                <?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8') ?>
+                                                <a href="../user_profile.php?user_id=<?= $uid ?>" class="text-decoration-none">
+                                                    <?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8') ?>
+                                                </a>
                                             </td>
                                             <td><?= htmlspecialchars($user["User_Email"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
                                             <td>
@@ -535,7 +501,7 @@ $yearMap = [
                                             <td><?= htmlspecialchars($user["User_Gender"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
                                             <td><?= htmlspecialchars($user["User_DOB"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
                                             <td><?= htmlspecialchars($user["User_PhoneNo"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
-                                            <td><?= htmlspecialchars($combinedAddr ?: '-', ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td><?= htmlspecialchars($formattedAddr ?: '-', ENT_QUOTES, 'UTF-8') ?></td>
                                         </tr>
 
                                     <?php elseif ($view === 'undergrads'): 
@@ -550,7 +516,9 @@ $yearMap = [
                                                 </a>
                                             </td>
                                             <td class="fw-semibold">
-                                                <?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8') ?>
+                                                <a href="../user_profile.php?user_id=<?= $uid ?>" class="text-decoration-none">
+                                                    <?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8') ?>
+                                                </a>
                                             </td>
                                             <td><?= htmlspecialchars($user["User_Email"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
                                             <td>
@@ -573,7 +541,7 @@ $yearMap = [
                                                 <?php endif; ?>
                                             </td>
                                             <td><?= htmlspecialchars($user["User_PhoneNo"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
-                                            <td><?= htmlspecialchars($combinedAddr ?: '-', ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td><?= htmlspecialchars($formattedAddr ?: '-', ENT_QUOTES, 'UTF-8') ?></td>
                                         </tr>
 
                                     <?php elseif ($view === 'graduates'): 
@@ -586,7 +554,9 @@ $yearMap = [
                                                 </a>
                                             </td>
                                             <td class="fw-semibold">
-                                                <?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8') ?>
+                                                <a href="../user_profile.php?user_id=<?= $uid ?>" class="text-decoration-none">
+                                                    <?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8') ?>
+                                                </a>
                                             </td>
                                             <td><?= htmlspecialchars($user["User_Email"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
                                             <td>
@@ -595,7 +565,7 @@ $yearMap = [
                                                 </span>
                                             </td>
                                             <td><?= htmlspecialchars($user["Grad_Type"] ?? 'Full-Time', ENT_QUOTES, 'UTF-8') ?></td>
-                                            <td><em><?= htmlspecialchars($user["Thesis"] ?: 'Non-Thesis', ENT_QUOTES, 'UTF-8') ?></em></td>
+                                            <td><em><?= htmlspecialchars(cleanThesisTitle($user["Thesis"] ?? '') ?: 'Non-Thesis', ENT_QUOTES, 'UTF-8') ?></em></td>
                                             <td><?= htmlspecialchars($user["Department_Name"] ?? 'General', ENT_QUOTES, 'UTF-8') ?></td>
                                             <td><?= htmlspecialchars($user["majors_list"] ?? 'Undeclared', ENT_QUOTES, 'UTF-8') ?></td>
                                             <td class="fw-bold text-center"><?= (int)($user["Credits_Earned"] ?? 0) ?></td>
@@ -609,7 +579,7 @@ $yearMap = [
                                                 <?php endif; ?>
                                             </td>
                                             <td><?= htmlspecialchars($user["User_PhoneNo"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
-                                            <td><?= htmlspecialchars($combinedAddr ?: '-', ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td><?= htmlspecialchars($formattedAddr ?: '-', ENT_QUOTES, 'UTF-8') ?></td>
                                         </tr>
 
                                     <?php elseif ($view === 'faculty'): ?>
@@ -620,7 +590,9 @@ $yearMap = [
                                                 </a>
                                             </td>
                                             <td class="fw-semibold">
-                                                <?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8') ?>
+                                                <a href="../user_profile.php?user_id=<?= $uid ?>" class="text-decoration-none">
+                                                    <?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8') ?>
+                                                </a>
                                             </td>
                                             <td><?= htmlspecialchars($user["User_Email"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
                                             <td>
@@ -633,7 +605,7 @@ $yearMap = [
                                             <td><?= htmlspecialchars($user["Office_ID"] ?? 'TBA', ENT_QUOTES, 'UTF-8') ?></td>
                                             <td><?= htmlspecialchars($user["depts_list"] ?? 'None', ENT_QUOTES, 'UTF-8') ?></td>
                                             <td><?= htmlspecialchars($user["User_PhoneNo"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
-                                            <td><?= htmlspecialchars($combinedAddr ?: '-', ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td><?= htmlspecialchars($formattedAddr ?: '-', ENT_QUOTES, 'UTF-8') ?></td>
                                         </tr>
                                     <?php endif; ?>
                                 <?php endwhile; ?>

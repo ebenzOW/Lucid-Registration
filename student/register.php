@@ -11,8 +11,9 @@ require_once 'student_guard.php';
 $student_id = (int)$userID;
 
 require_once '../db_connect.php';
-require_once __DIR__ . '/../includes/academic_helpers.php';
-require_once '../profile_hover_card.php';
+require_once __DIR__ . '/../includes/ui_helpers.php';
+require_once __DIR__ . '/../includes/student_helpers.php';
+require_once __DIR__ . '/../includes/schedule_helpers.php';
 
 // 1. Fetch Student Profile & Academic Classification
 $student = getStudentProfile($conn, $student_id);
@@ -95,7 +96,7 @@ $filterCrn        = isset($_GET['crn']) ? filter_var($_GET['crn'], FILTER_VALIDA
 $filterSection    = (isset($_GET['section']) && trim($_GET['section']) !== '') ? trim($_GET['section']) : null;
 $filterTimeSlot   = isset($_GET['time_slot_id']) ? filter_var($_GET['time_slot_id'], FILTER_VALIDATE_INT) : null;
 $filterInstructor = isset($_GET['instructor']) ? trim($_GET['instructor']) : '';
-$filterCredits    = isset($_GET['credits']) ? (trim($_GET['credits']) !== '' ? filter_var($_GET['credits'], FILTER_VALIDATE_INT) : '') : 4;
+$filterCredits    = isset($_GET['credits']) ? (trim($_GET['credits']) !== '' ? filter_var($_GET['credits'], FILTER_VALIDATE_INT) : '') : '';
 $filterOpenOnly   = !empty($_GET['open_only']);
 
 $searchFilters = [
@@ -125,52 +126,11 @@ unset($_SESSION['flash_error'], $_SESSION['flash_success']);
     <title><?= htmlspecialchars($semester_label, ENT_QUOTES, 'UTF-8') ?> Registration | Lucid University</title>
     <!-- Minimal Clean Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        <?= getProfileHoverCardStyles() ?>
-    </style>
 </head>
 <body class="bg-light">
 
     <!-- Unified Student Top Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#studentNav" aria-controls="studentNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="studentNav">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link" href="dashboard.php">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="schedule.php">My Schedule</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="master_schedule.php">Master Schedule</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="register.php">Register / Add-Drop</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="transcript.php">Transcript</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="degree_audit.php">Degree Audit</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="holds.php">Holds</a>
-                    </li>
-                </ul>
-                <div class="d-flex align-items-center gap-3">
-                    <?= getUserNavbarProfileHtml($conn, $student_id, 'Student') ?>
-                    <form action="../logout.php" method="POST" class="m-0">
-                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <?= renderStudentNavbar($conn, $student_id, 'register.php') ?>
 
     <div class="container mb-5">
 
@@ -309,7 +269,7 @@ unset($_SESSION['flash_error'], $_SESSION['flash_success']);
                                         <td><?= htmlspecialchars((string)$sec['Course_Credits'], ENT_QUOTES, 'UTF-8') ?></td>
                                         <td><?= formatSchedule($sec['Time_Slot_Day'], $sec['Start_Time'], $sec['End_Time']) ?></td>
                                         <td><?= htmlspecialchars($sec['Building_Name'] . ' ' . $sec['Room_NO'], ENT_QUOTES, 'UTF-8') ?></td>
-                                        <td><?= htmlspecialchars($sec['Instructor_Name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><?= renderFacultyLink($sec['Faculty_ID'] ?? 0, $sec['Instructor_Name'], '../') ?></td>
                                         <td class="text-end pe-3">
                                             <!-- Plain HTML POST Form to drop_action.php -->
                                             <form method="POST" action="drop_action.php" class="d-inline">
@@ -431,7 +391,7 @@ unset($_SESSION['flash_error'], $_SESSION['flash_success']);
                                     <th>Instructor</th>
                                     <th>Day / Time</th>
                                     <th>Room</th>
-                                    <th>Available Seats</th>
+                                    <th class="text-center">Enrollment / Allowed</th>
                                     <th class="text-end pe-3">Action</th>
                                 </tr>
                             </thead>
@@ -440,6 +400,8 @@ unset($_SESSION['flash_error'], $_SESSION['flash_success']);
                                     $secCrn = (int)$sec['CRN'];
                                     $secCourseId = $sec['Course_ID'];
                                     $seatsAvailable = (int)$sec['Available_seats'];
+                                    $enrolledCount = (int)($sec['Enrolled_Count'] ?? 0);
+                                    $allowedSeats = $enrolledCount + $seatsAvailable;
                                     $isEnrolled = in_array($secCrn, $enrolledCrns, true);
                                     $isEnrolledInCourse = in_array($secCourseId, $enrolledCourseIds, true);
                                 ?>
@@ -450,21 +412,32 @@ unset($_SESSION['flash_error'], $_SESSION['flash_success']);
                                         <td>
                                             <span class="fw-semibold"><?= htmlspecialchars($sec['Course_Name'], ENT_QUOTES, 'UTF-8') ?></span>
                                             <span class="badge bg-secondary-subtle text-secondary small ms-1"><?= htmlspecialchars($sec['Course_Type'], ENT_QUOTES, 'UTF-8') ?></span>
-                                            <div class="mt-1">
-                                                <button type="button" class="btn btn-outline-info btn-sm py-0 px-2" style="font-size: 0.75rem;" data-bs-toggle="modal" data-bs-target="#prereqModal-<?= $secCrn ?>">
+                                            <div class="mt-1 d-flex gap-1">
+                                                <button type="button" class="btn btn-outline-info btn-sm py-0 px-2" style="font-size: 0.75rem;"
+                                                        data-bs-toggle="modal" data-bs-target="#prereqModal"
+                                                        data-course-id="<?= htmlspecialchars($secCourseId, ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-course-name="<?= htmlspecialchars($sec['Course_Name'], ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-prereqs="<?= htmlspecialchars(json_encode($sec['prerequisites'] ?? []), ENT_QUOTES, 'UTF-8') ?>">
                                                     Prerequisites
+                                                </button>
+                                                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size: 0.75rem;"
+                                                        data-bs-toggle="modal" data-bs-target="#courseDescModal"
+                                                        data-course-id="<?= htmlspecialchars($secCourseId, ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-course-name="<?= htmlspecialchars($sec['Course_Name'], ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-course-desc="<?= htmlspecialchars($sec['Course_Description'] ?? 'No description available for this course.', ENT_QUOTES, 'UTF-8') ?>">
+                                                    Description
                                                 </button>
                                             </div>
                                         </td>
                                         <td><?= htmlspecialchars((string)$sec['Course_Credits'], ENT_QUOTES, 'UTF-8') ?></td>
-                                        <td><?= htmlspecialchars($sec['Instructor_Name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><?= renderFacultyLink($sec['Faculty_ID'] ?? 0, $sec['Instructor_Name'], '../') ?></td>
                                         <td><?= formatSchedule($sec['Time_Slot_Day'], $sec['Start_Time'], $sec['End_Time']) ?></td>
                                         <td><?= htmlspecialchars($sec['Building_Name'] . ' ' . $sec['Room_NO'], ENT_QUOTES, 'UTF-8') ?></td>
-                                        <td>
-                                            <?php if ($seatsAvailable > 0): ?>
-                                                <span class="badge bg-success"><?= $seatsAvailable ?> seats</span>
+                                        <td class="text-center">
+                                            <?php if ($seatsAvailable <= 0): ?>
+                                                <span class="badge bg-danger"><?= $enrolledCount ?> / <?= $allowedSeats ?> (Full)</span>
                                             <?php else: ?>
-                                                <span class="badge bg-danger">Full (0)</span>
+                                                <span class="badge bg-success"><?= $enrolledCount ?> / <?= $allowedSeats ?></span>
                                             <?php endif; ?>
                                         </td>
                                         <td class="text-end pe-3">
@@ -496,53 +469,102 @@ unset($_SESSION['flash_error'], $_SESSION['flash_success']);
             </div>
         </div>
 
-        <?php if (!empty($catalogSections)): ?>
-            <?php foreach ($catalogSections as $sec): 
-                $secCrn = (int)$sec['CRN'];
-                $secCourseId = $sec['Course_ID'];
-                $prereqs = $sec['prerequisites'] ?? [];
-            ?>
-                <!-- Prerequisites Modal for CRN <?= $secCrn ?> -->
-                <div class="modal fade" id="prereqModal-<?= $secCrn ?>" tabindex="-1" aria-labelledby="prereqModalLabel-<?= $secCrn ?>" aria-hidden="true">
-                    <div class="modal-dialog modal-dialog-centered">
-                        <div class="modal-content">
-                            <div class="modal-header">
-                                <h5 class="modal-title fs-6 fw-bold" id="prereqModalLabel-<?= $secCrn ?>">
-                                    Prerequisites: <?= htmlspecialchars($secCourseId, ENT_QUOTES, 'UTF-8') ?> &ndash; <?= htmlspecialchars($sec['Course_Name'], ENT_QUOTES, 'UTF-8') ?>
-                                </h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body">
-                                <?php if (!empty($prereqs)): ?>
-                                    <p class="small text-muted mb-2">Required prerequisite course(s):</p>
-                                    <ul class="list-group list-group-flush border rounded">
-                                        <?php foreach ($prereqs as $pr): ?>
-                                            <li class="list-group-item d-flex justify-content-between align-items-center">
-                                                <span>
-                                                    <strong><?= htmlspecialchars($pr['Course_ID'], ENT_QUOTES, 'UTF-8') ?></strong>
-                                                    &ndash; <?= htmlspecialchars($pr['Course_Name'], ENT_QUOTES, 'UTF-8') ?>
-                                                </span>
-                                            </li>
-                                        <?php endforeach; ?>
-                                    </ul>
-                                <?php else: ?>
-                                    <div class="alert alert-secondary mb-0 py-2 small">
-                                        None &mdash; No prerequisites required for this course.
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                            <div class="modal-footer py-2">
-                                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-                            </div>
-                        </div>
+        <!-- Reusable Prerequisites Modal -->
+        <div class="modal fade" id="prereqModal" tabindex="-1" aria-labelledby="prereqModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title fs-6 fw-bold" id="prereqModalLabel">Prerequisites</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body" id="prereqModalContent">
+                        <!-- Populated by JavaScript -->
+                    </div>
+                    <div class="modal-footer py-2">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
                     </div>
                 </div>
-            <?php endforeach; ?>
-        <?php endif; ?>
+            </div>
+        </div>
+
+        <!-- Reusable Course Description Modal -->
+        <div class="modal fade" id="courseDescModal" tabindex="-1" aria-labelledby="courseDescModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title fs-6 fw-bold" id="courseDescModalLabel">Course Description</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-0 text-secondary" id="courseDescContent" style="white-space: pre-line;">
+                            <!-- Populated by JavaScript -->
+                        </p>
+                    </div>
+                    <div class="modal-footer py-2">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
 
     </div>
 
     <!-- Bootstrap 5 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const prereqModal = document.getElementById('prereqModal');
+        if (prereqModal) {
+            prereqModal.addEventListener('show.bs.modal', function(event) {
+                const btn = event.relatedTarget;
+                const courseId = btn.getAttribute('data-course-id') || '';
+                const courseName = btn.getAttribute('data-course-name') || '';
+                let prereqs = [];
+                try {
+                    prereqs = JSON.parse(btn.getAttribute('data-prereqs') || '[]');
+                } catch(e) {}
+
+                document.getElementById('prereqModalLabel').textContent = 'Prerequisites: ' + courseId + ' - ' + courseName;
+                const container = document.getElementById('prereqModalContent');
+                container.replaceChildren();
+
+                if (prereqs && prereqs.length > 0) {
+                    const p = document.createElement('p');
+                    p.className = 'small text-muted mb-2';
+                    p.textContent = 'Required prerequisite course(s):';
+                    container.appendChild(p);
+
+                    const ul = document.createElement('ul');
+                    ul.className = 'list-group list-group-flush border rounded';
+                    prereqs.forEach(function(pr) {
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                        li.textContent = pr.Course_ID + ' - ' + pr.Course_Name;
+                        ul.appendChild(li);
+                    });
+                    container.appendChild(ul);
+                } else {
+                    const div = document.createElement('div');
+                    div.className = 'alert alert-secondary mb-0 py-2 small';
+                    div.textContent = 'None — No prerequisites required for this course.';
+                    container.appendChild(div);
+                }
+            });
+        }
+
+        const descModal = document.getElementById('courseDescModal');
+        if (descModal) {
+            descModal.addEventListener('show.bs.modal', function(event) {
+                const btn = event.relatedTarget;
+                const courseId = btn.getAttribute('data-course-id') || '';
+                const courseName = btn.getAttribute('data-course-name') || '';
+                const desc = btn.getAttribute('data-course-desc') || 'No description available for this course.';
+
+                document.getElementById('courseDescModalLabel').textContent = 'Description: ' + courseId + ' - ' + courseName;
+                document.getElementById('courseDescContent').textContent = desc;
+            });
+        }
+    });
+    </script>
 </body>
 </html>

@@ -723,8 +723,7 @@ BEGIN
         -- 7. Thesis & Credits (PhD gets unique dept-matched dissertation, MS has NULL)
         IF v_grad_program = 'PHD' THEN
             SET v_credits = (4 + FLOOR(RAND() * 11)) * 4; -- PhD: 16 - 56 credits (4 to 14 courses)
-            SET v_thesis = CONCAT(
-                ELT(v_dept_id,
+            SET v_thesis = ELT(v_dept_id,
                     CONCAT('Computer Science Dissertation: ', ELT(1 + (v_i MOD 5),
                         'Fault-Tolerant Consensus in Distributed Cloud Systems',
                         'Transformer Architectures for Low-Resource Neural Machine Translation',
@@ -797,9 +796,7 @@ BEGIN
                         'Circumstellar Disk Dust Coagulation and Protoplanetary Core Accretion',
                         'Gravitational Lensing Reconstruction of High-Redshift Galaxy Clusters',
                         'Magnetar Flare Energetics and Fast Radio Burst Emission Mechanisms'))
-                ),
-                ' [ID #', v_user_id, ']'
-            );
+                );
         ELSE
             SET v_credits = FLOOR(RAND() * 5) * 4; -- MS: 0 - 16 credits (0 to 4 courses; does not surpass 18-20 credit cap)
             SET v_thesis = NULL;

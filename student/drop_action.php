@@ -19,9 +19,11 @@ if (!$crn || $crn <= 0) {
 require_once '../db_connect.php';
 
 $semester_id = $post_semester;
+$inTransaction = false;
 
 try {
     $conn->begin_transaction();
+    $inTransaction = true;
 
     // 1. Lock enrollment and section to prevent double-drop race conditions
     $stmt = $conn->prepare("
@@ -75,10 +77,12 @@ try {
     $upd->close();
 
     $conn->commit();
+    $inTransaction = false;
     $_SESSION['flash_success'] = "Successfully dropped {$course_id} (CRN: {$crn}).";
 } catch (Exception $e) {
-    if (isset($conn) && $conn->in_transaction) {
+    if ($inTransaction) {
         $conn->rollback();
+        $inTransaction = false;
     }
     $_SESSION['flash_error'] = $e->getMessage();
 }

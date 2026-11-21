@@ -13,7 +13,8 @@
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
-require_once '../profile_hover_card.php';
+require_once __DIR__ . '/../includes/ui_helpers.php';
+require_once __DIR__ . '/../includes/schedule_helpers.php';
 
 $admin_id = (int)$userID;
 
@@ -72,49 +73,10 @@ $suggestedID = $defaultYear * 100 + 1; // e.g. 202701
     <title><?= $isNew ? 'Configure New Semester' : 'Edit Academic Term' ?> | Lucid University Admin</title>
     <!-- Minimal Clean Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        <?= getProfileHoverCardStyles() ?>
-    </style>
 </head>
 <body class="bg-light">
 
-    <!-- Unified Admin Top Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University <span class="badge bg-danger ms-1">Admin</span></a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNav" aria-controls="adminNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="adminNav">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link" href="dashboard.php">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="create_user.php">Create User</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="view_users.php">View Users</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="create_course_section.php">Create Course Section</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="semesters.php">Semesters</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="majors_minors.php">Majors & Minors</a>
-                    </li>
-                </ul>
-                <div class="d-flex align-items-center gap-3">
-                    <?= getUserNavbarProfileHtml($conn, $admin_id, 'Admin') ?>
-                    <form action="../logout.php" method="POST" class="m-0">
-                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <?= renderAdminNavbar($conn, $admin_id, basename($_SERVER['PHP_SELF'])) ?>
 
     <div class="container mb-5" style="max-width: 900px;">
 
@@ -178,22 +140,22 @@ $suggestedID = $defaultYear * 100 + 1; // e.g. 202701
                     <div class="row g-3 mb-4">
                         <div class="col-md-4">
                             <label for="semester_id" class="form-label fw-semibold">Semester ID</label>
-                            <input type="number" class="form-control font-monospace" id="semester_id" name="semester_id" 
+                            <input type="text" class="form-control font-monospace bg-light" id="semester_id" name="semester_id" 
                                    value="<?= htmlspecialchars((string)($semester['Semester_ID'] ?? $suggestedID)) ?>" 
-                                   <?= (!$isNew || $readOnlyMode) ? 'readonly' : 'required' ?> min="100000" max="999999">
-                            <div class="form-text small">Standard format: Year + Month (e.g. 202701 for Spring, 202708 for Fall).</div>
+                                   readonly required>
+                            <div class="form-text small">Auto-generated format: Year + Code (e.g. 202701 for Spring, 202708 for Fall).</div>
                         </div>
 
                         <div class="col-md-4">
                             <label for="semester_name" class="form-label fw-semibold">Term Name</label>
                             <?php if ($readOnlyMode): ?>
-                                <input type="text" class="form-control" value="<?= htmlspecialchars($semester['Semester_Name'] ?? '') ?>" readonly>
+                                <input type="text" class="form-control" id="semester_name" value="<?= htmlspecialchars($semester['Semester_Name'] ?? '') ?>" readonly>
                             <?php else: ?>
                                 <select class="form-select" id="semester_name" name="semester_name" required>
                                     <?php $curName = $semester['Semester_Name'] ?? 'Spring'; ?>
                                     <option value="Spring" <?= $curName === 'Spring' ? 'selected' : '' ?>>Spring</option>
-                                    <option value="Fall" <?= $curName === 'Fall' ? 'selected' : '' ?>>Fall</option>
                                     <option value="Summer" <?= $curName === 'Summer' ? 'selected' : '' ?>>Summer</option>
+                                    <option value="Fall" <?= $curName === 'Fall' ? 'selected' : '' ?>>Fall</option>
                                     <option value="Winter" <?= $curName === 'Winter' ? 'selected' : '' ?>>Winter</option>
                                 </select>
                             <?php endif; ?>
@@ -204,6 +166,15 @@ $suggestedID = $defaultYear * 100 + 1; // e.g. 202701
                             <input type="number" class="form-control" id="semester_year" name="semester_year" 
                                    value="<?= htmlspecialchars((string)($semester['Semester_Year'] ?? $defaultYear)) ?>" 
                                    <?= $readOnlyMode ? 'readonly' : 'required' ?> min="2020" max="2050">
+                        </div>
+
+                        <div class="col-12 d-flex justify-content-between align-items-center mt-3">
+                            <span class="small fw-bold text-secondary text-uppercase tracking-wider">Term Dates</span>
+                            <?php if (!$readOnlyMode && $isNew): ?>
+                                <button type="button" class="btn btn-outline-secondary btn-sm py-0 px-2" id="btn_reset_dates" style="font-size: 0.75rem;">
+                                    Reset / Pick Dates First
+                                </button>
+                            <?php endif; ?>
                         </div>
 
                         <div class="col-md-6">
@@ -279,5 +250,219 @@ $suggestedID = $defaultYear * 100 + 1; // e.g. 202701
 
     <!-- Bootstrap 5.3 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const isReadOnly = <?= $readOnlyMode ? 'true' : 'false' ?>;
+        if (isReadOnly) return;
+
+        const termSelect = document.getElementById('semester_name');
+        const yearInput = document.getElementById('semester_year');
+        const semesterIdInput = document.getElementById('semester_id');
+        const startDateInput = document.getElementById('start_date');
+        const endDateInput = document.getElementById('end_date');
+        const regInput = document.getElementById('last_day_reg');
+        const dropInput = document.getElementById('last_day_drop');
+        const midtermInput = document.getElementById('midterm_grades');
+        const finalInput = document.getElementById('final_grades');
+        const btnResetDates = document.getElementById('btn_reset_dates');
+
+        const termCodes = {
+            'Spring': '01',
+            'Summer': '05',
+            'Fall': '08',
+            'Winter': '12'
+        };
+
+        function getTermWindow(term, year) {
+            const y = parseInt(year, 10);
+            if (!y || !termCodes[term]) return null;
+            if (term === 'Spring') {
+                return {
+                    startMin: `${y}-01-01`,
+                    startMax: `${y}-02-28`,
+                    endMin: `${y}-04-01`,
+                    endMax: `${y}-06-15`
+                };
+            } else if (term === 'Summer') {
+                return {
+                    startMin: `${y}-05-01`,
+                    startMax: `${y}-06-30`,
+                    endMin: `${y}-07-01`,
+                    endMax: `${y}-08-31`
+                };
+            } else if (term === 'Fall') {
+                return {
+                    startMin: `${y}-08-01`,
+                    startMax: `${y}-09-30`,
+                    endMin: `${y}-11-15`,
+                    endMax: `${y}-12-31`
+                };
+            } else if (term === 'Winter') {
+                return {
+                    startMin: `${y}-12-01`,
+                    startMax: `${y}-12-31`,
+                    endMin: `${y + 1}-01-05`,
+                    endMax: `${y + 1}-01-31`
+                };
+            }
+            return null;
+        }
+
+        function updateDeadlines() {
+            const sVal = startDateInput.value;
+            const eVal = endDateInput.value;
+
+            if (regInput) {
+                if (sVal) regInput.min = sVal;
+                if (eVal) regInput.max = eVal;
+            }
+            if (dropInput) {
+                const dropMin = (regInput && regInput.value) ? regInput.value : sVal;
+                if (dropMin) dropInput.min = dropMin;
+                if (eVal) dropInput.max = eVal;
+            }
+            if (midtermInput) {
+                const midMin = (dropInput && dropInput.value) ? dropInput.value : sVal;
+                if (midMin) midtermInput.min = midMin;
+                if (eVal) midtermInput.max = eVal;
+            }
+            if (finalInput) {
+                const finMin = (midtermInput && midtermInput.value) ? midtermInput.value : sVal;
+                if (finMin) finalInput.min = finMin;
+                if (eVal) finalInput.max = eVal;
+            }
+        }
+
+        function updateFromTermAndYear() {
+            const term = termSelect ? termSelect.value : '';
+            const year = yearInput ? yearInput.value : '';
+            if (!term || !year) return;
+
+            const code = termCodes[term] || '01';
+            if (semesterIdInput) {
+                semesterIdInput.value = `${year}${code}`;
+            }
+
+            const win = getTermWindow(term, year);
+            if (win) {
+                startDateInput.min = win.startMin;
+                startDateInput.max = win.startMax;
+                endDateInput.min = win.endMin;
+                endDateInput.max = win.endMax;
+
+                if (startDateInput.value && (startDateInput.value < win.startMin || startDateInput.value > win.startMax)) {
+                    startDateInput.value = '';
+                }
+                if (endDateInput.value && (endDateInput.value < win.endMin || endDateInput.value > win.endMax)) {
+                    endDateInput.value = '';
+                }
+            }
+            updateDeadlines();
+        }
+
+        function updateFromStartDate() {
+            const val = startDateInput.value;
+            if (!val) return;
+            const parts = val.split('-');
+            if (parts.length !== 3) return;
+            const y = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10);
+
+            let inferredTerm = 'Spring';
+            let inferredYear = y;
+
+            if (m >= 1 && m <= 3) {
+                inferredTerm = 'Spring';
+            } else if (m === 4) {
+                inferredTerm = (parseInt(parts[2], 10) < 15) ? 'Spring' : 'Summer';
+            } else if (m >= 5 && m <= 6) {
+                inferredTerm = 'Summer';
+            } else if (m === 7) {
+                inferredTerm = 'Summer';
+            } else if (m >= 8 && m <= 10) {
+                inferredTerm = 'Fall';
+            } else if (m === 11) {
+                inferredTerm = 'Fall';
+            } else if (m === 12) {
+                inferredTerm = 'Winter';
+            }
+
+            if (termSelect && termSelect.tagName === 'SELECT') termSelect.value = inferredTerm;
+            if (yearInput) yearInput.value = inferredYear;
+            if (semesterIdInput) semesterIdInput.value = `${inferredYear}${termCodes[inferredTerm]}`;
+
+            const win = getTermWindow(inferredTerm, inferredYear);
+            if (win) {
+                startDateInput.min = win.startMin;
+                startDateInput.max = win.startMax;
+                endDateInput.min = (win.endMin > val) ? win.endMin : val;
+                endDateInput.max = win.endMax;
+            }
+            updateDeadlines();
+        }
+
+        function updateFromEndDate() {
+            const val = endDateInput.value;
+            if (!val) return;
+            const parts = val.split('-');
+            if (parts.length !== 3) return;
+            const y = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10);
+
+            let inferredTerm = 'Spring';
+            let inferredYear = y;
+
+            if (m === 1) {
+                inferredTerm = 'Winter';
+                inferredYear = y - 1;
+            } else if (m >= 2 && m <= 6) {
+                inferredTerm = 'Spring';
+            } else if (m >= 7 && m <= 8) {
+                inferredTerm = 'Summer';
+            } else if (m >= 9 && m <= 12) {
+                inferredTerm = 'Fall';
+            }
+
+            if (termSelect && termSelect.tagName === 'SELECT') termSelect.value = inferredTerm;
+            if (yearInput) yearInput.value = inferredYear;
+            if (semesterIdInput) semesterIdInput.value = `${inferredYear}${termCodes[inferredTerm]}`;
+
+            const win = getTermWindow(inferredTerm, inferredYear);
+            if (win) {
+                startDateInput.min = win.startMin;
+                startDateInput.max = (win.startMax < val) ? win.startMax : val;
+                endDateInput.min = win.endMin;
+                endDateInput.max = win.endMax;
+            }
+            updateDeadlines();
+        }
+
+        if (termSelect) termSelect.addEventListener('change', updateFromTermAndYear);
+        if (yearInput) yearInput.addEventListener('input', updateFromTermAndYear);
+        if (startDateInput) startDateInput.addEventListener('change', updateFromStartDate);
+        if (endDateInput) endDateInput.addEventListener('change', updateFromEndDate);
+
+        if (regInput) regInput.addEventListener('change', updateDeadlines);
+        if (dropInput) dropInput.addEventListener('change', updateDeadlines);
+        if (midtermInput) midtermInput.addEventListener('change', updateDeadlines);
+        if (finalInput) finalInput.addEventListener('change', updateDeadlines);
+
+        if (btnResetDates) {
+            btnResetDates.addEventListener('click', function() {
+                startDateInput.removeAttribute('min');
+                startDateInput.removeAttribute('max');
+                endDateInput.removeAttribute('min');
+                endDateInput.removeAttribute('max');
+                startDateInput.value = '';
+                endDateInput.value = '';
+                updateDeadlines();
+            });
+        }
+
+        // Initialize constraints on page load
+        updateFromTermAndYear();
+    });
+    </script>
 </body>
 </html>

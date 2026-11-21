@@ -360,10 +360,11 @@ BEGIN
             -- 4. Insert section
             INSERT INTO COURSE_SECTIONS (
                 CRN, Course_ID, Section_Number, Faculty_ID,
-                Time_Slot_ID, Room_ID, Semester_ID, Available_seats
+                Time_Slot_ID, Room_ID, Semester_ID, Available_seats, `Status`
             ) VALUES (
                 v_crn, v_course_id, v_section_no, v_faculty_id,
-                v_slot_id, v_room_id, v_semester_id, 10
+                v_slot_id, v_room_id, v_semester_id, 10,
+                CASE WHEN v_semester_id < 202608 THEN 'Past' ELSE 'Active' END
             );
 
             SET v_crn = v_crn + 1;

@@ -9,7 +9,8 @@
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
-require_once '../profile_hover_card.php';
+require_once __DIR__ . '/../includes/ui_helpers.php';
+require_once __DIR__ . '/../includes/schedule_helpers.php';
 
 $admin_id = (int)$userID;
 
@@ -40,13 +41,16 @@ $sql = "
     ORDER BY s.Start_Date DESC
 ";
 
-$result = $conn->query($sql);
+$stmt = $conn->prepare($sql);
+$stmt->execute();
+$result = $stmt->get_result();
 $semesters = [];
 if ($result) {
     while ($row = $result->fetch_assoc()) {
         $semesters[] = $row;
     }
 }
+$stmt->close();
 
 $today = date('Y-m-d');
 $totalSemesters = count($semesters);
@@ -70,7 +74,6 @@ foreach ($semesters as $sem) {
     <!-- Minimal Clean Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        <?= getProfileHoverCardStyles() ?>
         .table-hover tbody tr:hover {
             background-color: #f8f9fa;
         }
@@ -82,43 +85,7 @@ foreach ($semesters as $sem) {
 </head>
 <body class="bg-light">
 
-    <!-- Unified Admin Top Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University <span class="badge bg-danger ms-1">Admin</span></a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNav" aria-controls="adminNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="adminNav">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link" href="dashboard.php">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="create_user.php">Create User</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="view_users.php">View Users</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="create_course_section.php">Create Course Section</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="semesters.php">Semesters</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="majors_minors.php">Majors & Minors</a>
-                    </li>
-                </ul>
-                <div class="d-flex align-items-center gap-3">
-                    <?= getUserNavbarProfileHtml($conn, $admin_id, 'Admin') ?>
-                    <form action="../logout.php" method="POST" class="m-0">
-                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <?= renderAdminNavbar($conn, $admin_id, basename($_SERVER['PHP_SELF'])) ?>
 
     <div class="container-fluid px-lg-5 mb-5">
 

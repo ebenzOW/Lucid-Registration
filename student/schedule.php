@@ -12,8 +12,9 @@ require_once 'student_guard.php';
 $student_id = (int)$userID;
 
 require_once '../db_connect.php';
-require_once __DIR__ . '/../includes/academic_helpers.php';
-require_once '../profile_hover_card.php';
+require_once __DIR__ . '/../includes/ui_helpers.php';
+require_once __DIR__ . '/../includes/student_helpers.php';
+require_once __DIR__ . '/../includes/schedule_helpers.php';
 
 // 1. Fetch Student Profile
 $profile = getStudentProfile($conn, $student_id);
@@ -55,54 +56,11 @@ $course_count    = count($enrolledCourses);
     <title>My Schedule &bull; <?= htmlspecialchars($semester_name, ENT_QUOTES, 'UTF-8') ?> | Lucid University</title>
     <!-- Minimal Clean Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        <?= getProfileHoverCardStyles() ?>
-    </style>
 </head>
 <body class="bg-light">
 
     <!-- Unified Student Top Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#studentNav" aria-controls="studentNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="studentNav">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link" href="dashboard.php">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="schedule.php">My Schedule</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="master_schedule.php">Master Schedule</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="register.php">Register / Add-Drop</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="transcript.php">Transcript</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="degree_audit.php">Degree Audit</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="holds.php">Holds</a>
-                    </li>
-                </ul>
-                <div class="d-flex align-items-center gap-3">
-                    <span class="navbar-text text-white small d-none d-lg-inline">
-                        Welcome, <?= getUserNavbarProfileHtml($conn, $student_id, 'Student') ?>
-                    </span>
-                    <form action="../logout.php" method="POST" class="m-0">
-                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <?= renderStudentNavbar($conn, $student_id, 'schedule.php') ?>
 
     <div class="container mb-5">
 
@@ -254,7 +212,7 @@ $course_count    = count($enrolledCourses);
                                         <td class="text-center fw-bold"><?= (int)$sec['Course_Credits'] ?></td>
                                         <td><?= formatSchedule($sec['Time_Slot_Day'], $sec['Start_Time'], $sec['End_Time']) ?></td>
                                         <td><?= htmlspecialchars($sec['Building_Name'] . ' ' . $sec['Room_NO'], ENT_QUOTES, 'UTF-8') ?></td>
-                                        <td><?= htmlspecialchars($sec['Instructor_Name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><?= renderFacultyLink($sec['Faculty_ID'] ?? 0, $sec['Instructor_Name'], '../') ?></td>
                                         <td class="text-center">
                                             <?php if (!empty($sec['Grade'])): ?>
                                                 <span class="badge text-bg-success"><?= htmlspecialchars($sec['Grade'], ENT_QUOTES, 'UTF-8') ?></span>

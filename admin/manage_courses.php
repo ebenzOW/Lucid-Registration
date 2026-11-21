@@ -6,7 +6,8 @@
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
-require_once '../profile_hover_card.php';
+require_once __DIR__ . '/../includes/ui_helpers.php';
+require_once __DIR__ . '/../includes/schedule_helpers.php';
 
 $admin_id = (int)$userID;
 $can_write = ((int)($_SESSION['Security_Level'] ?? 1) >= 2);
@@ -124,49 +125,10 @@ $pStmt->close();
     <title>Manage Courses &amp; Prerequisites | Lucid University Admin</title>
     <!-- Minimal Clean Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        <?= getProfileHoverCardStyles() ?>
-    </style>
 </head>
 <body class="bg-light">
 
-    <!-- Unified Admin Top Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University <span class="badge bg-danger ms-1">Admin</span></a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNav" aria-controls="adminNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="adminNav">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item">
-                        <a class="nav-link" href="dashboard.php">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="create_user.php">Create User</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="view_users.php">View Users</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="create_course_section.php">Create Course Section</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" aria-current="page" href="manage_courses.php">Manage Courses</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="manage_holds.php">Manage Holds</a>
-                    </li>
-                </ul>
-                <div class="d-flex align-items-center gap-3">
-                    <?= getUserNavbarProfileHtml($conn, $admin_id, 'Admin') ?>
-                    <form action="../logout.php" method="POST" class="m-0">
-                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <?= renderAdminNavbar($conn, $admin_id, basename($_SERVER['PHP_SELF'])) ?>
 
     <div class="container-fluid px-lg-5 mb-5">
 
@@ -327,7 +289,16 @@ $pStmt->close();
                                         <?php if ($can_write): ?>
                                             <td class="text-end pe-3">
                                                 <div class="d-flex justify-content-end gap-1">
-                                                    <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 0.78rem;" data-bs-toggle="modal" data-bs-target="#editCourseModal-<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>">
+                                                    <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 edit-course-btn" style="font-size: 0.78rem;"
+                                                        data-bs-toggle="modal"
+                                                        data-bs-target="#editCourseModal"
+                                                        data-course-id="<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-course-name="<?= htmlspecialchars($c['Course_Name'], ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-course-type="<?= htmlspecialchars($c['Course_Type'], ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-credits="<?= (int)$c['Course_Credits'] ?>"
+                                                        data-dept-id="<?= (int)$c['Department_ID'] ?>"
+                                                        data-description="<?= htmlspecialchars($c['Course_Description'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                                                        data-prereqs="<?= htmlspecialchars(json_encode(array_column($reqPrereqs, 'Prerequisite_Course_ID')), ENT_QUOTES, 'UTF-8') ?>">
                                                         Edit
                                                     </button>
                                                     <form method="POST" action="manage_courses_process.php" class="d-inline m-0" onsubmit="return confirm('Delete course <?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>?');">
@@ -402,12 +373,35 @@ $pStmt->close();
                                 </div>
                                 <div class="col-12">
                                     <label class="form-label fw-semibold">Prerequisite Courses (Optional)</label>
+
+                                    <!-- Filter by Department Checkbox Bar -->
+                                    <div class="card bg-white border p-2 mb-2">
+                                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                                            <span class="small fw-bold text-secondary">Filter Prereqs by Department:</span>
+                                            <div class="btn-group btn-group-sm">
+                                                <button type="button" class="btn btn-outline-secondary py-0 px-2 btn-dept-all" style="font-size: 0.75rem;">Select All</button>
+                                                <button type="button" class="btn btn-outline-secondary py-0 px-2 btn-dept-clear" style="font-size: 0.75rem;">Clear</button>
+                                                <button type="button" class="btn btn-outline-primary py-0 px-2 btn-dept-same" style="font-size: 0.75rem;">Same Dept Only</button>
+                                            </div>
+                                        </div>
+                                        <div class="d-flex flex-wrap gap-2 dept-checkboxes-container">
+                                            <?php foreach ($departmentsList as $dept): ?>
+                                                <div class="form-check form-check-inline m-0">
+                                                    <input class="form-check-input dept-filter-cb" type="checkbox" id="add_dept_cb_<?= (int)$dept['Department_ID'] ?>" value="<?= (int)$dept['Department_ID'] ?>" checked>
+                                                    <label class="form-check-label small" for="add_dept_cb_<?= (int)$dept['Department_ID'] ?>" style="font-size: 0.78rem;">
+                                                        <?= htmlspecialchars($dept['Department_Name'], ENT_QUOTES, 'UTF-8') ?>
+                                                    </label>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </div>
+
                                     <div class="border rounded p-3 bg-light" style="max-height: 220px; overflow-y: auto;">
-                                        <div class="row g-2">
+                                        <div class="row g-2 prereq-list-container">
                                             <?php foreach ($allCoursesList as $optC): ?>
-                                                <div class="col-md-6">
+                                                <div class="col-md-6 prereq-item" data-dept-id="<?= (int)$optC['Department_ID'] ?>" data-course-id="<?= htmlspecialchars($optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?>">
                                                     <div class="form-check">
-                                                        <input class="form-check-input" type="checkbox" name="prerequisite_ids[]" value="<?= htmlspecialchars($optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?>" id="new_prereq_<?= htmlspecialchars($optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?>">
+                                                        <input class="form-check-input prereq-checkbox" type="checkbox" name="prerequisite_ids[]" value="<?= htmlspecialchars($optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?>" id="new_prereq_<?= htmlspecialchars($optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?>">
                                                         <label class="form-check-label small" for="new_prereq_<?= htmlspecialchars($optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?>">
                                                             <strong><?= htmlspecialchars($optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?></strong> &ndash; <?= htmlspecialchars($optC['Course_Name'], ENT_QUOTES, 'UTF-8') ?>
                                                             <span class="badge bg-secondary-subtle text-secondary py-0" style="font-size: 0.68rem;"><?= htmlspecialchars($optC['Course_Type'], ENT_QUOTES, 'UTF-8') ?></span>
@@ -430,94 +424,242 @@ $pStmt->close();
             </div>
         </div>
 
-        <!-- Edit Course Modals (One per displayed course) -->
-        <?php foreach ($courses as $c): 
-            $cid = $c['Course_ID'];
-            $currentPrereqs = $prereqMap[$cid] ?? [];
-            $currentPrereqIds = array_column($currentPrereqs, 'Prerequisite_Course_ID');
-        ?>
-            <div class="modal fade" id="editCourseModal-<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>" tabindex="-1" aria-labelledby="editCourseModalLabel-<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>" aria-hidden="true">
-                <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-                    <div class="modal-content">
-                        <form method="POST" action="manage_courses_process.php">
-                            <input type="hidden" name="action" value="update_course">
-                            <input type="hidden" name="course_id" value="<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>">
-                            <div class="modal-header">
-                                <h5 class="modal-title fw-bold" id="editCourseModalLabel-<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>">
-                                    Edit Course: <?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>
-                                </h5>
-                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <div class="modal-body">
-                                <div class="row g-3">
-                                    <div class="col-md-4">
-                                        <label class="form-label fw-semibold">Course ID</label>
-                                        <input type="text" class="form-control bg-light" value="<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>" disabled>
-                                        <div class="form-text">Course ID primary key cannot be altered.</div>
-                                    </div>
-                                    <div class="col-md-8">
-                                        <label for="edit_name_<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>" class="form-label fw-semibold">Course Name <span class="text-danger">*</span></label>
-                                        <input type="text" name="course_name" id="edit_name_<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>" class="form-control" value="<?= htmlspecialchars($c['Course_Name'], ENT_QUOTES, 'UTF-8') ?>" required maxlength="100">
-                                    </div>
-                                    <div class="col-md-4">
-                                        <label for="edit_type_<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>" class="form-label fw-semibold">Course Type <span class="text-danger">*</span></label>
-                                        <select name="course_type" id="edit_type_<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>" class="form-select" required>
-                                            <option value="Undergraduate" <?= ($c['Course_Type'] === 'Undergraduate') ? 'selected' : '' ?>>Undergraduate</option>
-                                            <option value="Graduate" <?= ($c['Course_Type'] === 'Graduate') ? 'selected' : '' ?>>Graduate</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <label for="edit_credits_<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>" class="form-label fw-semibold">Credits <span class="text-danger">*</span></label>
-                                        <input type="number" name="course_credits" id="edit_credits_<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>" class="form-control" min="1" max="6" value="<?= (int)$c['Course_Credits'] ?>" required>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <label for="edit_dept_<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>" class="form-label fw-semibold">Department <span class="text-danger">*</span></label>
-                                        <select name="department_id" id="edit_dept_<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>" class="form-select" required>
-                                            <?php foreach ($departmentsList as $dept): ?>
-                                                <option value="<?= (int)$dept['Department_ID'] ?>" <?= ((int)$c['Department_ID'] === (int)$dept['Department_ID']) ? 'selected' : '' ?>>
-                                                    <?= htmlspecialchars($dept['Department_Name'], ENT_QUOTES, 'UTF-8') ?>
-                                                </option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                    </div>
-                                    <div class="col-12">
-                                        <label for="edit_desc_<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>" class="form-label fw-semibold">Course Description</label>
-                                        <textarea name="course_description" id="edit_desc_<?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>" rows="3" class="form-control"><?= htmlspecialchars($c['Course_Description'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
-                                    </div>
-                                    <div class="col-12">
-                                        <label class="form-label fw-semibold">Prerequisites</label>
-                                        <div class="border rounded p-3 bg-light" style="max-height: 220px; overflow-y: auto;">
-                                            <div class="row g-2">
-                                                <?php foreach ($allCoursesList as $optC): 
-                                                    if ($optC['Course_ID'] === $cid) continue; // Skip self
-                                                    $isPrereq = in_array($optC['Course_ID'], $currentPrereqIds, true);
-                                                ?>
-                                                    <div class="col-md-6">
-                                                        <div class="form-check">
-                                                            <input class="form-check-input" type="checkbox" name="prerequisite_ids[]" value="<?= htmlspecialchars($optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?>" id="edit_prereq_<?= htmlspecialchars($cid . '_' . $optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?>" <?= $isPrereq ? 'checked' : '' ?>>
-                                                            <label class="form-check-label small" for="edit_prereq_<?= htmlspecialchars($cid . '_' . $optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?>">
-                                                                <strong><?= htmlspecialchars($optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?></strong> &ndash; <?= htmlspecialchars($optC['Course_Name'], ENT_QUOTES, 'UTF-8') ?>
-                                                                <span class="badge bg-secondary-subtle text-secondary py-0" style="font-size: 0.68rem;"><?= htmlspecialchars($optC['Course_Type'], ENT_QUOTES, 'UTF-8') ?></span>
-                                                            </label>
-                                                        </div>
-                                                    </div>
-                                                <?php endforeach; ?>
+        <!-- Reusable Edit Course Modal -->
+        <div class="modal fade" id="editCourseModal" tabindex="-1" aria-labelledby="edit_modal_title" aria-hidden="true">
+            <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+                <div class="modal-content">
+                    <form method="POST" action="manage_courses_process.php">
+                        <input type="hidden" name="action" value="update_course">
+                        <input type="hidden" name="course_id" id="edit_course_id" value="">
+                        <div class="modal-header">
+                            <h5 class="modal-title fw-bold" id="edit_modal_title">Edit Course</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label fw-semibold">Course ID</label>
+                                    <input type="text" id="edit_course_id_display" class="form-control bg-light" value="" disabled>
+                                    <div class="form-text">Course ID primary key cannot be altered.</div>
+                                </div>
+                                <div class="col-md-8">
+                                    <label for="edit_course_name" class="form-label fw-semibold">Course Name <span class="text-danger">*</span></label>
+                                    <input type="text" name="course_name" id="edit_course_name" class="form-control" value="" required maxlength="100">
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="edit_course_type" class="form-label fw-semibold">Course Type <span class="text-danger">*</span></label>
+                                    <select name="course_type" id="edit_course_type" class="form-select" required>
+                                        <option value="Undergraduate">Undergraduate</option>
+                                        <option value="Graduate">Graduate</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="edit_course_credits" class="form-label fw-semibold">Credits <span class="text-danger">*</span></label>
+                                    <input type="number" name="course_credits" id="edit_course_credits" class="form-control" min="1" max="6" value="4" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="edit_department_id" class="form-label fw-semibold">Department <span class="text-danger">*</span></label>
+                                    <select name="department_id" id="edit_department_id" class="form-select" required>
+                                        <?php foreach ($departmentsList as $dept): ?>
+                                            <option value="<?= (int)$dept['Department_ID'] ?>">
+                                                <?= htmlspecialchars($dept['Department_Name'], ENT_QUOTES, 'UTF-8') ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                </div>
+                                <div class="col-12">
+                                    <label for="edit_course_description" class="form-label fw-semibold">Course Description</label>
+                                    <textarea name="course_description" id="edit_course_description" rows="3" class="form-control"></textarea>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label fw-semibold">Prerequisites</label>
+
+                                    <!-- Filter by Department Checkbox Bar -->
+                                    <div class="card bg-white border p-2 mb-2">
+                                        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                                            <span class="small fw-bold text-secondary">Filter Prereqs by Department:</span>
+                                            <div class="btn-group btn-group-sm">
+                                                <button type="button" class="btn btn-outline-secondary py-0 px-2 btn-dept-all" style="font-size: 0.75rem;">Select All</button>
+                                                <button type="button" class="btn btn-outline-secondary py-0 px-2 btn-dept-clear" style="font-size: 0.75rem;">Clear</button>
+                                                <button type="button" class="btn btn-outline-primary py-0 px-2 btn-dept-same" style="font-size: 0.75rem;">Same Dept Only</button>
                                             </div>
                                         </div>
-                                        <div class="form-text">Update required prerequisite courses for <?= htmlspecialchars($cid, ENT_QUOTES, 'UTF-8') ?>.</div>
+                                        <div class="d-flex flex-wrap gap-2 dept-checkboxes-container">
+                                            <?php foreach ($departmentsList as $dept): ?>
+                                                <div class="form-check form-check-inline m-0">
+                                                    <input class="form-check-input dept-filter-cb" type="checkbox" id="edit_dept_cb_<?= (int)$dept['Department_ID'] ?>" value="<?= (int)$dept['Department_ID'] ?>" checked>
+                                                    <label class="form-check-label small" for="edit_dept_cb_<?= (int)$dept['Department_ID'] ?>" style="font-size: 0.78rem;">
+                                                        <?= htmlspecialchars($dept['Department_Name'], ENT_QUOTES, 'UTF-8') ?>
+                                                    </label>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
                                     </div>
+
+                                    <div class="border rounded p-3 bg-light" style="max-height: 220px; overflow-y: auto;">
+                                        <div class="row g-2 prereq-list-container">
+                                            <?php foreach ($allCoursesList as $optC): ?>
+                                                <div class="col-md-6 prereq-item" data-dept-id="<?= (int)$optC['Department_ID'] ?>" data-course-id="<?= htmlspecialchars($optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?>">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input prereq-checkbox" type="checkbox" name="prerequisite_ids[]" value="<?= htmlspecialchars($optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?>" id="edit_prereq_<?= htmlspecialchars($optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?>">
+                                                        <label class="form-check-label small" for="edit_prereq_<?= htmlspecialchars($optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?>">
+                                                            <strong><?= htmlspecialchars($optC['Course_ID'], ENT_QUOTES, 'UTF-8') ?></strong> &ndash; <?= htmlspecialchars($optC['Course_Name'], ENT_QUOTES, 'UTF-8') ?>
+                                                            <span class="badge bg-secondary-subtle text-secondary py-0" style="font-size: 0.68rem;"><?= htmlspecialchars($optC['Course_Type'], ENT_QUOTES, 'UTF-8') ?></span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            <?php endforeach; ?>
+                                        </div>
+                                    </div>
+                                    <div class="form-text">Update required prerequisite courses.</div>
                                 </div>
                             </div>
-                            <div class="modal-footer">
-                                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                                <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
-                            </div>
-                        </form>
-                    </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
+                        </div>
+                    </form>
                 </div>
             </div>
-        <?php endforeach; ?>
+        </div>
     <?php endif; ?>
+
+    <!-- Bootstrap 5.3 JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        function setupPrereqFilter(modalEl, getSameDeptId) {
+            const filterContainer = modalEl.querySelector('.dept-checkboxes-container');
+            if (!filterContainer) return;
+            const cbs = filterContainer.querySelectorAll('.dept-filter-cb');
+            const items = modalEl.querySelectorAll('.prereq-item');
+            const btnAll = modalEl.querySelector('.btn-dept-all');
+            const btnClear = modalEl.querySelector('.btn-dept-clear');
+            const btnSame = modalEl.querySelector('.btn-dept-same');
+
+            function updateVisibility() {
+                const checkedDeptIds = new Set();
+                cbs.forEach(cb => {
+                    if (cb.checked) checkedDeptIds.add(cb.value);
+                });
+                const currentCourseId = modalEl.getAttribute('data-current-course-id') || '';
+
+                items.forEach(item => {
+                    const itemDept = item.getAttribute('data-dept-id');
+                    const itemCid = item.getAttribute('data-course-id');
+                    if (itemCid && itemCid === currentCourseId) {
+                        item.classList.add('d-none');
+                    } else if (checkedDeptIds.has(itemDept)) {
+                        item.classList.remove('d-none');
+                    } else {
+                        item.classList.add('d-none');
+                    }
+                });
+            }
+
+            cbs.forEach(cb => cb.addEventListener('change', updateVisibility));
+
+            if (btnAll) {
+                btnAll.addEventListener('click', function() {
+                    cbs.forEach(cb => cb.checked = true);
+                    updateVisibility();
+                });
+            }
+
+            if (btnClear) {
+                btnClear.addEventListener('click', function() {
+                    cbs.forEach(cb => cb.checked = false);
+                    updateVisibility();
+                });
+            }
+
+            if (btnSame) {
+                btnSame.addEventListener('click', function() {
+                    const sameDept = getSameDeptId ? getSameDeptId() : '';
+                    cbs.forEach(cb => {
+                        cb.checked = (Boolean(sameDept) && String(cb.value) === String(sameDept));
+                    });
+                    updateVisibility();
+                });
+            }
+
+            modalEl._updatePrereqVisibility = updateVisibility;
+        }
+
+        const addModal = document.getElementById('addCourseModal');
+        if (addModal) {
+            setupPrereqFilter(addModal, function() {
+                return addModal.querySelector('#new_department_id').value;
+            });
+        }
+
+        const editModal = document.getElementById('editCourseModal');
+        if (editModal) {
+            setupPrereqFilter(editModal, function() {
+                return editModal.querySelector('#edit_department_id').value;
+            });
+
+            editModal.addEventListener('show.bs.modal', function(event) {
+                const btn = event.relatedTarget;
+                if (!btn) return;
+
+                const cid = btn.getAttribute('data-course-id') || '';
+                const name = btn.getAttribute('data-course-name') || '';
+                const type = btn.getAttribute('data-course-type') || 'Undergraduate';
+                const credits = btn.getAttribute('data-credits') || '4';
+                const deptId = btn.getAttribute('data-dept-id') || '';
+                const desc = btn.getAttribute('data-description') || '';
+                let prereqs = [];
+                try {
+                    prereqs = JSON.parse(btn.getAttribute('data-prereqs') || '[]');
+                } catch(e) {
+                    prereqs = [];
+                }
+
+                editModal.setAttribute('data-current-course-id', cid);
+                const titleEl = editModal.querySelector('#edit_modal_title');
+                if (titleEl) titleEl.textContent = 'Edit Course: ' + cid;
+
+                const idInput = editModal.querySelector('#edit_course_id');
+                if (idInput) idInput.value = cid;
+
+                const idDisplay = editModal.querySelector('#edit_course_id_display');
+                if (idDisplay) idDisplay.value = cid;
+
+                const nameInput = editModal.querySelector('#edit_course_name');
+                if (nameInput) nameInput.value = name;
+
+                const typeInput = editModal.querySelector('#edit_course_type');
+                if (typeInput) typeInput.value = type;
+
+                const creditsInput = editModal.querySelector('#edit_course_credits');
+                if (creditsInput) creditsInput.value = credits;
+
+                const deptInput = editModal.querySelector('#edit_department_id');
+                if (deptInput) deptInput.value = deptId;
+
+                const descInput = editModal.querySelector('#edit_course_description');
+                if (descInput) descInput.value = desc;
+
+                // Sync prereq checkboxes
+                const prereqCbs = editModal.querySelectorAll('.prereq-checkbox');
+                prereqCbs.forEach(cb => {
+                    cb.checked = prereqs.includes(cb.value);
+                });
+
+                // Reset department checkboxes to checked
+                const deptCbs = editModal.querySelectorAll('.dept-filter-cb');
+                deptCbs.forEach(cb => cb.checked = true);
+
+                if (editModal._updatePrereqVisibility) {
+                    editModal._updatePrereqVisibility();
+                }
+            });
+        }
+    });
+    </script>
 
     <!-- Bootstrap 5.3 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>

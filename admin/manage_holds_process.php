@@ -6,6 +6,7 @@
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
+require_once __DIR__ . '/../includes/auth_helpers.php';
 
 $admin_id = (int)$userID;
 
@@ -16,12 +17,14 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 }
 
 $action = $_POST['action'] ?? '';
+$inTransaction = false;
 
 try {
     // Enforce Security Level >= 2
     requireAdminWriteAccess();
 
     $conn->begin_transaction();
+    $inTransaction = true;
 
     if ($action === 'add_hold') {
         $student_id = filter_var($_POST['student_id'] ?? null, FILTER_VALIDATE_INT);
@@ -94,6 +97,7 @@ try {
         }
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Successfully applied hold(s) (" . implode(', ', $appliedNames) . ") to Student {$student_id}.";
 
     } elseif ($action === 'remove_hold') {
@@ -137,6 +141,7 @@ try {
         $logStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Successfully removed {$hold_type} hold from Student {$student_id}.";
 
     } else {
@@ -144,8 +149,9 @@ try {
     }
 
 } catch (Exception $e) {
-    if (isset($conn) && $conn->in_transaction) {
+    if ($inTransaction) {
         $conn->rollback();
+        $inTransaction = false;
     }
     $_SESSION['error_message'] = $e->getMessage();
 }

@@ -9,6 +9,7 @@
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
+require_once __DIR__ . '/../includes/auth_helpers.php';
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: create_course_section.php");
@@ -22,6 +23,8 @@ $time_slot_id    = filter_var($_POST['time_slot_id'] ?? null, FILTER_VALIDATE_IN
 $room_id         = trim($_POST['room_id'] ?? '');
 $available_seats = filter_var($_POST['available_seats'] ?? null, FILTER_VALIDATE_INT);
 
+$inTransaction = false;
+
 try {
     // Why: SRS rules forbid read-only administrators (Security Level 1) from creating course sections.
     requireAdminWriteAccess();
@@ -32,6 +35,7 @@ try {
     }
 
     $conn->begin_transaction();
+    $inTransaction = true;
 
     // 1. Constraint 1: Target Semester Eligibility Check (Must not have started)
     $semStmt = $conn->prepare("
@@ -255,6 +259,7 @@ try {
     $insertStmt->close();
 
     $conn->commit();
+    $inTransaction = false;
 
     // Fetch summary data for session display
     $tsDetailStmt = $conn->prepare("
@@ -301,8 +306,9 @@ try {
     ];
 
 } catch (Exception $e) {
-    if (isset($conn) && $conn->in_transaction) {
+    if ($inTransaction) {
         $conn->rollback();
+        $inTransaction = false;
     }
     $_SESSION["error_message"] = $e->getMessage();
     unset($_SESSION["new_section_data"]);
