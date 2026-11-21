@@ -12,7 +12,7 @@ TODO.txt
 *.ps1
 *.md
 *.sh
-.antigravity/
+.antigravity/*
 
 .devcontainer/
 # =========================
