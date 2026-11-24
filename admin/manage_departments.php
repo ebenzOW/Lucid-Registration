@@ -6,8 +6,9 @@
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
-require_once '../department_helpers.php';
-require_once '../profile_hover_card.php';
+// Why: Helpers were moved into includes/ during the refactor; __DIR__ guarantees identical path resolution on Windows XAMPP and AWS Lightsail Linux.
+require_once __DIR__ . '/../includes/department_helpers.php';
+require_once __DIR__ . '/../includes/ui_helpers.php';
 
 $admin_id = (int)$userID;
 $canWrite = ((int)($_SESSION['Security_Level'] ?? 1) >= 2);
@@ -75,40 +76,9 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Departments | Lucid University Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        <?= getProfileHoverCardStyles() ?>
-    </style>
 </head>
 <body class="bg-light">
-    <!-- Unified Admin Top Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
-        <div class="container-fluid px-lg-5">
-            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University <span class="badge bg-danger ms-1">Admin</span></a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNav" aria-controls="adminNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="adminNav">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                    <li class="nav-item"><a class="nav-link" href="dashboard.php">Dashboard</a></li>
-                    <li class="nav-item"><a class="nav-link" href="create_user.php">Create User</a></li>
-                    <li class="nav-item"><a class="nav-link" href="view_users.php">View Users</a></li>
-                    <li class="nav-item"><a class="nav-link" href="create_course_section.php">Create Course Section</a></li>
-                    <li class="nav-item"><a class="nav-link" href="manage_courses.php">Manage Courses</a></li>
-                    <li class="nav-item"><a class="nav-link" href="manage_holds.php">Manage Holds</a></li>
-                    <li class="nav-item"><a class="nav-link" href="semesters.php">Semesters</a></li>
-                    <li class="nav-item"><a class="nav-link" href="majors_minors.php">Majors &amp; Minors</a></li>
-                    <li class="nav-item"><a class="nav-link" href="manage_advisors.php">Advisors</a></li>
-                    <li class="nav-item"><a class="nav-link active" aria-current="page" href="manage_departments.php">Departments</a></li>
-                </ul>
-                <div class="d-flex align-items-center gap-3">
-                    <?= getUserNavbarProfileHtml($conn, $admin_id, 'Admin') ?>
-                    <form action="../logout.php" method="POST" class="m-0">
-                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <?= renderAdminNavbar($conn, $admin_id, basename($_SERVER['PHP_SELF'])) ?>
 
     <main class="container-fluid px-lg-5 mb-5">
         <!-- Page Header -->
