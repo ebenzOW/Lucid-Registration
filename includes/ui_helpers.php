@@ -273,6 +273,36 @@ function renderFacultyNavbar(mysqli $conn, int $faculty_id, string $activePage =
 HTML;
 }
 
+function renderStatDepartmentNavbar(array $profile): string {
+    $profileName = escapeHtml($profile['full_name'] ?? 'Stat Department Staff');
+
+    return <<<HTML
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
+        <div class="container-fluid px-lg-5">
+            <a class="navbar-brand fw-bold" href="stat_department_dashboard.php">
+                Lucid University <span class="badge bg-info text-dark ms-1">Stat Department</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#statNav" aria-controls="statNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="statNav">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link active" aria-current="page" href="stat_department_dashboard.php">Statistics Dashboard</a>
+                    </li>
+                </ul>
+                <div class="d-flex align-items-center gap-3">
+                    <span class="navbar-text text-white small">{$profileName}</span>
+                    <form action="../logout.php" method="POST" class="m-0">
+                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </nav>
+HTML;
+}
+
 /**
  * Backwards-compatibility stub
  */

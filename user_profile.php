@@ -71,7 +71,8 @@ $target_type = $user['User_Type'];
 
 // 2. Permission & Access Control
 // - Users can always view their own profile.
-// - Admins and Stat-Dept can view any profile.
+// - Stat-Dept users can only view their own profile.
+// - Admins can view any profile.
 // - All authenticated users can view Faculty profiles in directory view.
 // - Faculty can view student profiles if they advise or teach them.
 $hasAccess = false;
@@ -84,7 +85,8 @@ if ($target_id === $viewer_id) {
     $hasAccess = true;
     $canViewPrivate = true;
 } elseif ($viewer_type === 'Stat-Dept') {
-    $hasAccess = true;
+    // Stat-Dept can only view aggregate statistics, not individual profiles
+    $hasAccess = false; 
     $canViewPrivate = false;
 } elseif ($target_type === 'Faculty') {
     // Public directory view for all logged-in students and faculty
@@ -344,6 +346,7 @@ $dashboardUrl = match($viewer_type) {
     'Student'   => 'student/dashboard.php',
     'Faculty'   => 'faculty/dashboard.php',
     'Admin'     => 'admin/dashboard.php',
+    'Stat-Dept' => 'stat_department/stat_department_dashboard.php',
     default     => 'login.php'
 };
 ?>
