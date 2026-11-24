@@ -263,6 +263,25 @@ function getFacultyAdvisees(mysqli $conn, int $faculty_id): array {
 }
 
 /**
+ * Count students assigned to a faculty advisor.
+ */
+function getFacultyAdviseeCount(mysqli $conn, int $faculty_id): int {
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) AS total
+        FROM ADVISOR_STUDENT
+        WHERE Faculty_ID = ?
+    ");
+
+    $stmt->bind_param("i", $faculty_id);
+    $stmt->execute();
+
+    $count = (int)$stmt->get_result()->fetch_assoc()['total'];
+    $stmt->close();
+
+    return $count;
+}
+
+/**
  * Build unified section attendance matrix reused by Faculty Dashboard and Admin Master Schedule.
  */
 function getSectionAttendanceMatrix(mysqli $conn, int $crn): array {

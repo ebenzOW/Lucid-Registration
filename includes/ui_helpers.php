@@ -224,10 +224,14 @@ HTML;
  */
 function renderFacultyNavbar(mysqli $conn, int $faculty_id, string $activePage = 'dashboard.php'): string {
     $isDashboard = ($activePage === 'dashboard.php');
+    $isAdvisees = in_array($activePage, ['view_advisees.php', 'advisee_degree_audit.php'], true);
     $isProfile = ($activePage === 'user_profile.php');
 
     $dashActiveClass = $isDashboard ? ' active' : '';
     $dashAria = $isDashboard ? ' aria-current="page"' : '';
+
+    $adviseesActiveClass = $isAdvisees ? ' active' : '';
+    $adviseesAria = $isAdvisees ? ' aria-current="page"' : '';
 
     $profActiveClass = $isProfile ? ' active' : '';
     $profAria = $isProfile ? ' aria-current="page"' : '';
@@ -250,8 +254,12 @@ function renderFacultyNavbar(mysqli $conn, int $faculty_id, string $activePage =
                         <a class="nav-link{$dashActiveClass}"{$dashAria} href="dashboard.php">Dashboard &amp; Current Sections</a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link{$adviseesActiveClass}"{$adviseesAria} href="view_advisees.php">View Advisees</a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link{$profActiveClass}"{$profAria} href="../user_profile.php?user_id={$escapedFacultyId}">My Profile</a>
                     </li>
+
                 </ul>
                 <div class="d-flex align-items-center gap-3">
                     {$profileHtml}
