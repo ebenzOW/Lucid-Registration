@@ -160,6 +160,19 @@ $admin_id = (int)$userID;
                     </div>
                 </div>
             </div>
+            <div class="col-md-4">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <h5 class="fw-bold text-dark mb-2">Profile Change Requests</h5>
+                        <p class="text-secondary small flex-grow-1">
+                            Review pending student and faculty personal profile update requests, approve or reject modifications, and inspect the USER_UPDATE_LOG audit trail.
+                        </p>
+                        <a href="manage_change_requests.php" class="btn btn-outline-primary btn-sm mt-2">
+                            Review Requests &rarr;
+                        </a>
+                    </div>
+                </div>
+            </div>
         </div>
 
     </div>

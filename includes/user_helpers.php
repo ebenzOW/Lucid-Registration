@@ -450,3 +450,40 @@ function createStatDept(mysqli $conn, int $userID, array $data = []): void
     $stmt->execute();
     $stmt->close();
 }
+
+/**
+ * Fetch a user's core USER + LOGIN account record by User_ID.
+ */
+function getUserAccountById(mysqli $conn, int $user_id): ?array
+{
+    $stmt = $conn->prepare("
+        SELECT u.User_ID, u.User_Type, u.User_FName, u.User_MName, u.User_LName,
+               u.User_Gender, u.User_DOB, u.User_PhoneNo,
+               u.Street_No, u.Street_Name, u.City, u.State, u.Country, u.Zip_Code,
+               l.User_Email
+        FROM `USER` u
+        LEFT JOIN LOGIN l ON u.User_ID = l.User_ID
+        WHERE u.User_ID = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
+    $user = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    return $user ?: null;
+}
+
+/**
+ * Fetch an Administrator's Security_Level from ADMIN.
+ */
+function getAdminSecurityLevel(mysqli $conn, int $admin_id): ?int
+{
+    $stmt = $conn->prepare("SELECT Security_Level FROM ADMIN WHERE Admin_ID = ? LIMIT 1");
+    $stmt->bind_param("i", $admin_id);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    return $row ? (int)$row['Security_Level'] : null;
+}

@@ -532,7 +532,6 @@ $advisingKpiStmt->close();
                                                 <span class="badge bg-secondary-subtle text-secondary border border-secondary-subtle">
                                                     <?= htmlspecialchars($s['Student_Type']) ?>
                                                 </span>
-                                                <div class="small text-muted mt-1">Class of <?= (int)$s['Student_Year'] ?></div>
                                             </td>
                                             <td>
                                                 <?php if (!empty($s['Majors'])): ?>
@@ -625,7 +624,7 @@ $advisingKpiStmt->close();
                                 <option value="">All Advising Statuses</option>
                                 <option value="available">Available Spots (Capacity &lt; 15)</option>
                                 <option value="full">At Maximum Capacity (15/15)</option>
-                                <option value="ineligible">Part-Time (Ineligible per SRS)</option>
+                                <option value="ineligible">Part-Time (Ineligible)</option>
                             </select>
                         </div>
                     </div>
@@ -843,7 +842,7 @@ $advisingKpiStmt->close();
                                 <?php endforeach; ?>
                             </select>
                             <div class="form-text small">
-                                Per university SRS rules, only Full-Time faculty in the student's department with available advising capacity (&lt; 15 advisees) are eligible.
+                                Per university policy, only Full-Time faculty in the student's department with available advising capacity (&lt; 15 advisees) are eligible.
                             </div>
                         </div>
                     </div>
