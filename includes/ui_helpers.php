@@ -96,7 +96,7 @@ function getUserNavbarProfileHtml(mysqli $conn, int $user_id, ?string $user_type
 
     $prefix = file_exists('user_profile.php') ? '' : '../';
     $url = $prefix . "user_profile.php?user_id=" . $user_id;
-    return '<a href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '" class="fw-semibold text-decoration-underline ' . htmlspecialchars($link_classes, ENT_QUOTES, 'UTF-8') . '" title="View Full Profile">' . htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8') . '</a>';
+    return '<a href="' . htmlspecialchars($url, ENT_QUOTES, 'UTF-8') . '" class="fw-semibold text-decoration-underline text-nowrap ' . htmlspecialchars($link_classes, ENT_QUOTES, 'UTF-8') . '" title="View Full Profile">' . htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8') . '</a>';
 }
 
 /**
@@ -128,6 +128,7 @@ function renderAdminNavbar(mysqli $conn, int $admin_id, string $activeFile = '')
         'majors_minors.php'          => 'Majors & Minors',
         'manage_advisors.php'        => 'Advisors',
         'manage_facilities.php'      => 'Facilities',
+        'manage_change_requests.php' => 'Change Requests',
     ];
 
     $profileHtml = getUserNavbarProfileHtml($conn, $admin_id, 'Admin');
@@ -139,14 +140,14 @@ function renderAdminNavbar(mysqli $conn, int $admin_id, string $activeFile = '')
         $ariaCurrent = $isActive ? ' aria-current="page"' : '';
         $escapedLabel = htmlspecialchars($label, ENT_QUOTES, 'UTF-8');
         $linksHtml .= '<li class="nav-item">'
-            . '<a class="nav-link' . $activeClass . '"' . $ariaCurrent . ' href="' . $file . '">' . $escapedLabel . '</a>'
+            . '<a class="nav-link text-nowrap' . $activeClass . '"' . $ariaCurrent . ' href="' . $file . '">' . $escapedLabel . '</a>'
             . '</li>' . "\n";
     }
 
     return <<<HTML
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
+    <nav class="navbar navbar-expand-xl navbar-dark bg-dark mb-4 shadow-sm">
         <div class="container-fluid px-lg-5">
-            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University <span class="badge bg-danger ms-1">Admin</span></a>
+            <a class="navbar-brand fw-bold text-nowrap" href="dashboard.php">Lucid University <span class="badge bg-danger ms-1">Admin</span></a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNav" aria-controls="adminNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -155,9 +156,9 @@ function renderAdminNavbar(mysqli $conn, int $admin_id, string $activeFile = '')
                     {$linksHtml}
                 </ul>
                 <div class="d-flex align-items-center gap-3">
-                    {$profileHtml}
+                    <span class="text-nowrap">{$profileHtml}</span>
                     <form action="../logout.php" method="POST" class="m-0">
-                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
+                        <button type="submit" class="btn btn-outline-light btn-sm text-nowrap">Log Out</button>
                     </form>
                 </div>
             </div>
@@ -171,14 +172,15 @@ HTML;
  */
 function renderStudentNavbar(mysqli $conn, int $student_id, string $activeFile = ''): string {
     $navItems = [
-        'dashboard.php'       => 'Dashboard',
-        'schedule.php'        => 'My Schedule',
-        'master_schedule.php' => 'Master Schedule',
-        'register.php'        => 'Register / Add-Drop',
-        'transcript.php'      => 'Transcript',
-        'degree_audit.php'    => 'Degree Audit',
-        'holds.php'           => 'Holds',
-        'majors_minors.php'   => 'Majors & Minors',
+        'dashboard.php'        => 'Dashboard',
+        'schedule.php'         => 'Schedule',
+        'master_schedule.php'  => 'Master Schedule',
+        'register.php'         => 'Register',
+        'transcript.php'       => 'Transcript',
+        'degree_audit.php'     => 'Degree Audit',
+        'holds.php'            => 'Holds',
+        'majors_minors.php'    => 'Majors & Minors',
+        'profile_requests.php' => 'Profile Requests',
     ];
 
     $profileHtml = getUserNavbarProfileHtml($conn, $student_id, 'Student');
@@ -190,14 +192,14 @@ function renderStudentNavbar(mysqli $conn, int $student_id, string $activeFile =
         $ariaCurrent = $isActive ? ' aria-current="page"' : '';
         $escapedLabel = htmlspecialchars($label, ENT_QUOTES, 'UTF-8');
         $linksHtml .= '<li class="nav-item">'
-            . '<a class="nav-link' . $activeClass . '"' . $ariaCurrent . ' href="' . $file . '">' . $escapedLabel . '</a>'
+            . '<a class="nav-link text-nowrap' . $activeClass . '"' . $ariaCurrent . ' href="' . $file . '">' . $escapedLabel . '</a>'
             . '</li>' . "\n";
     }
 
     return <<<HTML
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
-        <div class="container">
-            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University</a>
+    <nav class="navbar navbar-expand-xl navbar-dark bg-dark mb-4 shadow-sm">
+        <div class="container-fluid px-lg-4 px-xl-5">
+            <a class="navbar-brand fw-bold text-nowrap" href="dashboard.php">Lucid University</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#studentNav" aria-controls="studentNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -205,12 +207,10 @@ function renderStudentNavbar(mysqli $conn, int $student_id, string $activeFile =
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     {$linksHtml}
                 </ul>
-                <div class="d-flex align-items-center gap-3">
-                    <span class="navbar-text text-white small d-none d-lg-inline">
-                        Welcome, {$profileHtml}
-                    </span>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="text-nowrap">{$profileHtml}</span>
                     <form action="../logout.php" method="POST" class="m-0">
-                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
+                        <button type="submit" class="btn btn-outline-light btn-sm text-nowrap">Log Out</button>
                     </form>
                 </div>
             </div>
@@ -223,14 +223,18 @@ HTML;
  * Render unified Bootstrap 5.3 navigation bar for Faculty pages.
  */
 function renderFacultyNavbar(mysqli $conn, int $faculty_id, string $activePage = 'dashboard.php'): string {
-    $isDashboard = ($activePage === 'dashboard.php');
-    $isProfile = ($activePage === 'user_profile.php');
+    $isDashboard       = ($activePage === 'dashboard.php');
+    $isProfile         = ($activePage === 'user_profile.php');
+    $isProfileRequests = ($activePage === 'profile_requests.php');
 
     $dashActiveClass = $isDashboard ? ' active' : '';
-    $dashAria = $isDashboard ? ' aria-current="page"' : '';
+    $dashAria        = $isDashboard ? ' aria-current="page"' : '';
 
     $profActiveClass = $isProfile ? ' active' : '';
-    $profAria = $isProfile ? ' aria-current="page"' : '';
+    $profAria        = $isProfile ? ' aria-current="page"' : '';
+
+    $reqActiveClass  = $isProfileRequests ? ' active' : '';
+    $reqAria         = $isProfileRequests ? ' aria-current="page"' : '';
 
     $profileHtml = getUserNavbarProfileHtml($conn, $faculty_id, 'Faculty');
     $escapedFacultyId = (int)$faculty_id;
@@ -238,7 +242,7 @@ function renderFacultyNavbar(mysqli $conn, int $faculty_id, string $activePage =
     return <<<HTML
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="dashboard.php">
+            <a class="navbar-brand fw-bold text-nowrap" href="dashboard.php">
                 Lucid University <span class="badge bg-warning text-dark ms-1">Faculty</span>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#facultyNav" aria-controls="facultyNav" aria-expanded="false" aria-label="Toggle navigation">
@@ -247,16 +251,19 @@ function renderFacultyNavbar(mysqli $conn, int $faculty_id, string $activePage =
             <div class="collapse navbar-collapse" id="facultyNav">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item">
-                        <a class="nav-link{$dashActiveClass}"{$dashAria} href="dashboard.php">Dashboard &amp; Current Sections</a>
+                        <a class="nav-link text-nowrap{$dashActiveClass}"{$dashAria} href="dashboard.php">Dashboard &amp; Current Sections</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link{$profActiveClass}"{$profAria} href="../user_profile.php?user_id={$escapedFacultyId}">My Profile</a>
+                        <a class="nav-link text-nowrap{$profActiveClass}"{$profAria} href="../user_profile.php?user_id={$escapedFacultyId}">My Profile</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link text-nowrap{$reqActiveClass}"{$reqAria} href="profile_requests.php">Profile Requests</a>
                     </li>
                 </ul>
                 <div class="d-flex align-items-center gap-3">
-                    {$profileHtml}
+                    <span class="text-nowrap">{$profileHtml}</span>
                     <form action="../logout.php" method="POST" class="m-0">
-                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
+                        <button type="submit" class="btn btn-outline-light btn-sm text-nowrap">Log Out</button>
                     </form>
                 </div>
             </div>

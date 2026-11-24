@@ -169,8 +169,9 @@ $mnReqStmt->close();
 
         <!-- Active Declarations Card -->
         <div class="card shadow-sm border-0 mb-4">
-            <div class="card-header bg-white py-3 border-0">
+            <div class="card-header bg-white py-3 border-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
                 <h5 class="fw-bold mb-0">My Current Academic Declarations</h5>
+                <span class="small text-muted">Undergraduate students may declare up to 2 majors (with no minor) OR 1 major and 1 minor.</span>
             </div>
             <div class="card-body p-4 pt-0">
                 <div class="row g-3">
@@ -283,6 +284,8 @@ $mnReqStmt->close();
                                 } elseif ($studentType === 'Undergraduate') {
                                     if (count($currentMajorIds) >= 2) {
                                         $disableReason = 'Max 2 Majors Reached';
+                                    } elseif (count($currentMajorIds) >= 1 && $currentMinor) {
+                                        $disableReason = 'Drop Minor for 2nd Major';
                                     } elseif ($levelType !== 'ug') {
                                         $disableReason = 'Graduate Program';
                                     } else {
@@ -363,6 +366,8 @@ $mnReqStmt->close();
                                     $minorReason = 'Undergraduate Only';
                                 } elseif ($isMinorDeclared) {
                                     $minorReason = 'Already Declared';
+                                } elseif (count($currentMajorIds) >= 2) {
+                                    $minorReason = 'Max 1 Major with Minor';
                                 } elseif ($currentMinor) {
                                     $minorReason = 'Max 1 Minor Reached';
                                 } else {

@@ -1,21 +1,12 @@
 <?php
 /**
  * Lucid University Course Registration System
- * Admin Portal - Process Student Profile Change Requests & Audit Logging
- *
- * Enforces SRS Constraints:
- * 1. Read-only admins (Security Level 1) cannot approve or reject requests (`requireAdminWriteAccess()`).
- * 2. Admins can only modify user profile info in response to an explicit Pending request.
- * 3. When an admin permits (approves) a change request:
- *    - Updates the allowed attributes in `USER` (`User_FName`, `User_MName`, `User_LName`,
- *      `User_Gender`, `User_DOB`, `User_PhoneNo`, `Street_No`, `Street_Name`, `City`, `State`, `Country`, `Zip_Code`).
- *    - Compares old vs. new values for each column and inserts a corresponding audit row into
- *      `USER_UPDATE_LOG` (`Admin_ID`, `User_ID`, `Changed_Attribute`, `Date_Of_Change`) for every modified column.
- *    - Marks the request as `'Approved'` with `Reviewed_By = $admin_id` and `Reviewed_At = CURRENT_TIMESTAMP`.
+ * Admin Portal - Process Profile Change Requests & Audit Logging
  */
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
+require_once __DIR__ . '/../includes/audit_helpers.php';
 
 $admin_id = (int)$userID;
 
@@ -25,24 +16,33 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 }
 
 $request_id  = isset($_POST['request_id']) ? (int)$_POST['request_id'] : 0;
-$decision    = trim($_POST['decision'] ?? ''); // 'approve' or 'reject'
+$decision    = trim($_POST['decision'] ?? '');
 $admin_notes = trim($_POST['admin_notes'] ?? '');
 $return_tab  = trim($_POST['return_tab'] ?? 'requests');
+if (!in_array($return_tab, ['requests', 'audit_log'], true)) {
+    $return_tab = 'requests';
+}
+
+$inTransaction = false;
 
 try {
-    // 1. Enforce Security Level >= 2 write permission
+    // 1. Enforce Security Level >= 2 write permission per SRS
     requireAdminWriteAccess();
 
     if ($request_id <= 0 || !in_array($decision, ['approve', 'reject'], true)) {
         throw new Exception("Invalid request ID or decision action specified.");
     }
 
-    // 2. Fetch the Pending Request
+    // Why: Begin transaction and lock the request row before checking status to prevent concurrent double-processing.
+    $conn->begin_transaction();
+    $inTransaction = true;
+
     $reqStmt = $conn->prepare("
         SELECT *
         FROM PROFILE_CHANGE_REQUESTS
         WHERE Request_ID = ?
         LIMIT 1
+        FOR UPDATE
     ");
     $reqStmt->bind_param("i", $request_id);
     $reqStmt->execute();
@@ -59,13 +59,14 @@ try {
     $target_user_id = (int)$request['User_ID'];
     $notes_db = $admin_notes !== '' ? substr($admin_notes, 0, 255) : null;
 
-    // 3. Fetch Current User Record for Diff Comparison
+    // 2. Lock and fetch current USER record for accurate diffing and atomic update
     $uStmt = $conn->prepare("
         SELECT User_ID, User_FName, User_MName, User_LName, User_Gender, User_DOB,
                User_PhoneNo, Street_No, Street_Name, City, State, Country, Zip_Code
         FROM `USER`
         WHERE User_ID = ?
         LIMIT 1
+        FOR UPDATE
     ");
     $uStmt->bind_param("i", $target_user_id);
     $uStmt->execute();
@@ -75,8 +76,6 @@ try {
     if (!$currentUser) {
         throw new Exception("Target user account (ID: {$target_user_id}) does not exist.");
     }
-
-    $conn->begin_transaction();
 
     if ($decision === 'reject') {
         $rejStmt = $conn->prepare("
@@ -89,17 +88,27 @@ try {
         ");
         $rejStmt->bind_param("isi", $admin_id, $notes_db, $request_id);
         if (!$rejStmt->execute()) {
-            throw new Exception("Failed to reject request: " . $rejStmt->error);
+            $err = $rejStmt->error;
+            $rejStmt->close();
+            throw new Exception("Failed to reject request: " . $err);
         }
         $rejStmt->close();
 
+        $rejDetails = "Rejected profile change request for User ID {$target_user_id}";
+        if ($admin_notes !== '') {
+            $rejDetails .= " (Notes: {$admin_notes})";
+        }
+        logAdminActivity($conn, $admin_id, 'Profile Request', $request_id, 'Reject', $rejDetails);
+
         $conn->commit();
+        $inTransaction = false;
+
         $_SESSION['success_message'] = "Profile change request (#{$request_id}) for User ID {$target_user_id} has been rejected.";
         header("Location: manage_change_requests.php?tab=" . urlencode($return_tab));
         exit;
     }
 
-    // 4. Decision === 'approve': Determine which attributes changed
+    // 3. Decision === 'approve': Compute changed attributes against locked USER row
     $fieldMapping = [
         'User_FName'   => $request['Req_FName'],
         'User_MName'   => $request['Req_MName'],
@@ -123,7 +132,7 @@ try {
         }
     }
 
-    // 5. Update USER table with requested values
+    // 4. Update USER table (only allowed personal attributes; User_ID and User_Email untouched)
     $updUserStmt = $conn->prepare("
         UPDATE `USER`
         SET User_FName   = ?,
@@ -159,30 +168,22 @@ try {
     );
 
     if (!$updUserStmt->execute()) {
-        throw new Exception("Failed to update USER profile record: " . $updUserStmt->error);
+        $err = $updUserStmt->error;
+        $updUserStmt->close();
+        throw new Exception("Failed to update USER profile record: " . $err);
     }
     $updUserStmt->close();
 
-    // 6. Insert Audit Log entries into USER_UPDATE_LOG for every changed attribute
+    // 5. Write per-column audit entries to USER_UPDATE_LOG
     if (empty($changedAttributes)) {
         $changedAttributes[] = 'Profile_Verified';
     }
 
-    $logStmt = $conn->prepare("
-        INSERT INTO USER_UPDATE_LOG (Admin_ID, User_ID, Changed_Attribute, Date_Of_Change)
-        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-    ");
-
     foreach ($changedAttributes as $attrName) {
-        $attrClean = substr($attrName, 0, 50);
-        $logStmt->bind_param("iis", $admin_id, $target_user_id, $attrClean);
-        if (!$logStmt->execute()) {
-            throw new Exception("Failed to write to USER_UPDATE_LOG: " . $logStmt->error);
-        }
+        logUserUpdate($conn, $admin_id, $target_user_id, $attrName);
     }
-    $logStmt->close();
 
-    // 7. Mark request as Approved in PROFILE_CHANGE_REQUESTS
+    // 6. Mark request as Approved
     $appStmt = $conn->prepare("
         UPDATE PROFILE_CHANGE_REQUESTS
         SET Request_Status = 'Approved',
@@ -193,22 +194,34 @@ try {
     ");
     $appStmt->bind_param("isi", $admin_id, $notes_db, $request_id);
     if (!$appStmt->execute()) {
-        throw new Exception("Failed to update request status: " . $appStmt->error);
+        $err = $appStmt->error;
+        $appStmt->close();
+        throw new Exception("Failed to update request status: " . $err);
     }
     $appStmt->close();
 
+    logAdminActivity(
+        $conn,
+        $admin_id,
+        'Profile Request',
+        $request_id,
+        'Approve',
+        "Approved request for User ID {$target_user_id}: " . implode(', ', $changedAttributes)
+    );
+
     $conn->commit();
+    $inTransaction = false;
 
     $_SESSION['success_message'] = "Approved Request #{$request_id} for User ID {$target_user_id}! Updated USER profile and recorded " . count($changedAttributes) . " audit entry/entries in USER_UPDATE_LOG (" . implode(', ', $changedAttributes) . ").";
     header("Location: manage_change_requests.php?tab=" . urlencode($return_tab));
     exit;
 
 } catch (Exception $e) {
-    if (isset($conn) && $conn instanceof mysqli && $conn->connect_errno === 0) {
-        @$conn->rollback();
+    if ($inTransaction) {
+        $conn->rollback();
+        $inTransaction = false;
     }
     $_SESSION['error_message'] = $e->getMessage();
     header("Location: manage_change_requests.php?tab=" . urlencode($return_tab));
     exit;
 }
-?>

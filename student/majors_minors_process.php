@@ -79,12 +79,22 @@ try {
             throw new Exception("You are already declared in " . $major['Major_Name'] . ".");
         }
 
+        // Lock existing minors to enforce Major/Minor mutual exclusion
+        $minCountStmt = $conn->prepare("SELECT Minor_ID FROM STUDENT_MINORS WHERE Student_ID = ? FOR UPDATE");
+        $minCountStmt->bind_param("i", $student_id);
+        $minCountStmt->execute();
+        $minorCount = $minCountStmt->get_result()->num_rows;
+        $minCountStmt->close();
+
         $progLevel = $major['Program_Level'] ?? 'Undergraduate';
 
-        // Academic Level Validation using Program_Level
+        // Academic Level & Mutual Exclusion Validation
         if ($studentType === 'Undergraduate') {
             if (count($existingMajorIds) >= 2) {
                 throw new Exception("Undergraduate students may declare a maximum of two majors simultaneously.");
+            }
+            if (count($existingMajorIds) >= 1 && $minorCount > 0) {
+                throw new Exception("You cannot declare a second major while you have an active minor. Please drop your current minor first.");
             }
             if ($progLevel !== 'Undergraduate') {
                 throw new Exception("Undergraduate students cannot declare graduate degree programs.");
@@ -174,6 +184,16 @@ try {
 
         if ($studentType === 'Graduate') {
             throw new Exception("Graduate students are not permitted to declare undergraduate minors.");
+        }
+
+        // Lock existing majors to enforce Major/Minor mutual exclusion
+        $majCountStmt = $conn->prepare("SELECT COUNT(*) AS cnt FROM STUDENT_MAJORS WHERE Student_ID = ? FOR UPDATE");
+        $majCountStmt->bind_param("i", $student_id);
+        $majCountStmt->execute();
+        $majorCount = (int)($majCountStmt->get_result()->fetch_assoc()['cnt'] ?? 0);
+        $majCountStmt->close();
+        if ($majorCount >= 2) {
+            throw new Exception("You cannot declare a minor while enrolled in two majors. Please drop one major before adding a minor.");
         }
 
         // Lock existing minors

@@ -2,12 +2,6 @@
 /**
  * Lucid University Course Registration System
  * Admin Portal - Profile Change Requests & USER_UPDATE_LOG Audit Hub
- *
- * Implements SRS Use Cases & Constraints:
- * 1. View student profile change requests with side-by-side diff of Current vs. Requested fields.
- * 2. Permit (Approve) or Reject change requests (Security Level >= 2 required).
- * 3. Automatically updates `USER` and records audit rows in `USER_UPDATE_LOG` upon approval.
- * 4. Displays the complete `USER_UPDATE_LOG` audit trail.
  */
 
 require_once 'admin_guard.php';
@@ -17,41 +11,12 @@ require_once __DIR__ . '/../includes/ui_helpers.php';
 $admin_id = (int)$userID;
 $canWrite = ((int)($_SESSION['Security_Level'] ?? 1) >= 2);
 
-// Ensure PROFILE_CHANGE_REQUESTS table exists
-$conn->query("
-    CREATE TABLE IF NOT EXISTS PROFILE_CHANGE_REQUESTS (
-        Request_ID INT NOT NULL AUTO_INCREMENT,
-        User_ID INT NOT NULL,
-        Req_FName VARCHAR(50) NOT NULL,
-        Req_MName VARCHAR(50),
-        Req_LName VARCHAR(50) NOT NULL,
-        Req_Gender VARCHAR(15),
-        Req_DOB DATE,
-        Req_PhoneNo VARCHAR(15),
-        Req_Street_No VARCHAR(10),
-        Req_Street_Name VARCHAR(50),
-        Req_City VARCHAR(50),
-        Req_State VARCHAR(20),
-        Req_Country VARCHAR(50),
-        Req_Zip_Code VARCHAR(15),
-        Request_Reason VARCHAR(255),
-        Request_Status VARCHAR(20) NOT NULL DEFAULT 'Pending',
-        Requested_At DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        Reviewed_By INT,
-        Reviewed_At DATETIME,
-        Admin_Notes VARCHAR(255),
-        PRIMARY KEY (Request_ID),
-        FOREIGN KEY (User_ID) REFERENCES `USER`(User_ID) ON DELETE CASCADE,
-        FOREIGN KEY (Reviewed_By) REFERENCES ADMIN(Admin_ID) ON DELETE SET NULL
-    ) ENGINE=InnoDB
-");
-
 $successMessage = $_SESSION['success_message'] ?? '';
 $errorMessage   = $_SESSION['error_message'] ?? '';
 unset($_SESSION['success_message'], $_SESSION['error_message']);
 
 $activeTab = $_GET['tab'] ?? 'requests';
-if (!in_array($activeTab, ['requests', 'audit_log'], true)) {
+if (!in_array($activeTab, ['requests', 'audit_log', 'activity_log'], true)) {
     $activeTab = 'requests';
 }
 
@@ -60,12 +25,37 @@ if (!in_array($statusFilter, ['All', 'Pending', 'Approved', 'Rejected'], true)) 
     $statusFilter = 'All';
 }
 
+$roleFilter = $_GET['role'] ?? 'All';
+if (!in_array($roleFilter, ['All', 'Student', 'Faculty'], true)) {
+    $roleFilter = 'All';
+}
+
+$validEntities = [
+    'All',
+    'User',
+    'Profile Request',
+    'Student Hold',
+    'Advisor',
+    'Course',
+    'Course Section',
+    'Major',
+    'Minor',
+    'Requirement',
+    'Semester',
+    'Building',
+    'Room',
+];
+$entityFilter = $_GET['entity'] ?? 'All';
+if (!in_array($entityFilter, $validEntities, true)) {
+    $entityFilter = 'All';
+}
+
 $searchUser = isset($_GET['search_user']) ? trim($_GET['search_user']) : '';
 
 // -----------------------------------------------------------------------------
 // 1. Fetch All Profile Change Requests Joined with Current USER & Reviewer Info
 // -----------------------------------------------------------------------------
-$requestsSql = "
+$reqStmt = $conn->prepare("
     SELECT 
         r.*,
         u.User_Type,
@@ -92,44 +82,47 @@ $requestsSql = "
         CASE WHEN r.Request_Status = 'Pending' THEN 0 ELSE 1 END ASC,
         r.Requested_At DESC,
         r.Request_ID DESC
-";
+");
+$reqStmt->execute();
+$reqRes = $reqStmt->get_result();
 
-$reqRes = $conn->query($requestsSql);
-$allRequests = [];
+$allRequests   = [];
 $pendingCount  = 0;
 $approvedCount = 0;
 $rejectedCount = 0;
 
-if ($reqRes) {
-    while ($row = $reqRes->fetch_assoc()) {
-        if ($row['Request_Status'] === 'Pending') {
-            $pendingCount++;
-        } elseif ($row['Request_Status'] === 'Approved') {
-            $approvedCount++;
-        } elseif ($row['Request_Status'] === 'Rejected') {
-            $rejectedCount++;
-        }
+while ($row = $reqRes->fetch_assoc()) {
+    if ($row['Request_Status'] === 'Pending') {
+        $pendingCount++;
+    } elseif ($row['Request_Status'] === 'Approved') {
+        $approvedCount++;
+    } elseif ($row['Request_Status'] === 'Rejected') {
+        $rejectedCount++;
+    }
 
-        if ($statusFilter !== 'All' && $row['Request_Status'] !== $statusFilter) {
+    if ($statusFilter !== 'All' && $row['Request_Status'] !== $statusFilter) {
+        continue;
+    }
+    if ($roleFilter !== 'All' && ($row['User_Type'] ?? '') !== $roleFilter) {
+        continue;
+    }
+    if ($searchUser !== '') {
+        $fullNameMatch = stripos(($row['Cur_FName'] ?? '') . ' ' . ($row['Cur_LName'] ?? ''), $searchUser) !== false
+                      || stripos(($row['Req_FName'] ?? '') . ' ' . ($row['Req_LName'] ?? ''), $searchUser) !== false
+                      || stripos((string)$row['User_ID'], $searchUser) !== false;
+        if (!$fullNameMatch) {
             continue;
         }
-        if ($searchUser !== '') {
-            $fullNameMatch = stripos($row['Cur_FName'] . ' ' . $row['Cur_LName'], $searchUser) !== false
-                          || stripos($row['Req_FName'] . ' ' . $row['Req_LName'], $searchUser) !== false
-                          || stripos((string)$row['User_ID'], $searchUser) !== false;
-            if (!$fullNameMatch) {
-                continue;
-            }
-        }
-
-        $allRequests[] = $row;
     }
+
+    $allRequests[] = $row;
 }
+$reqStmt->close();
 
 // -----------------------------------------------------------------------------
 // 2. Fetch USER_UPDATE_LOG Audit Trail
 // -----------------------------------------------------------------------------
-$logsSql = "
+$logsStmt = $conn->prepare("
     SELECT 
         lg.Log_ID,
         lg.Admin_ID,
@@ -145,26 +138,74 @@ $logsSql = "
     LEFT JOIN `USER` u_target ON lg.User_ID = u_target.User_ID
     LEFT JOIN `USER` u_admin ON lg.Admin_ID = u_admin.User_ID
     ORDER BY lg.Date_Of_Change DESC, lg.Log_ID DESC
-";
-$logsRes = $conn->query($logsSql);
+");
+$logsStmt->execute();
+$logsRes = $logsStmt->get_result();
+
 $auditLogs = [];
-if ($logsRes) {
-    while ($lRow = $logsRes->fetch_assoc()) {
-        if ($searchUser !== '') {
-            $logMatch = stripos((string)$lRow['User_ID'], $searchUser) !== false
-                     || stripos((string)$lRow['Admin_ID'], $searchUser) !== false
-                     || stripos(($lRow['Target_FName'] ?? '') . ' ' . ($lRow['Target_LName'] ?? ''), $searchUser) !== false
-                     || stripos($lRow['Changed_Attribute'] ?? '', $searchUser) !== false;
-            if (!$logMatch) {
-                continue;
-            }
-        }
-        $auditLogs[] = $lRow;
+while ($lRow = $logsRes->fetch_assoc()) {
+    if ($roleFilter !== 'All' && ($lRow['Target_Type'] ?? '') !== $roleFilter) {
+        continue;
     }
+    if ($searchUser !== '') {
+        $logMatch = stripos((string)$lRow['User_ID'], $searchUser) !== false
+                 || stripos((string)$lRow['Admin_ID'], $searchUser) !== false
+                 || stripos(($lRow['Target_FName'] ?? '') . ' ' . ($lRow['Target_LName'] ?? ''), $searchUser) !== false
+                 || stripos($lRow['Changed_Attribute'] ?? '', $searchUser) !== false;
+        if (!$logMatch) {
+            continue;
+        }
+    }
+    $auditLogs[] = $lRow;
 }
+$logsStmt->close();
+
+// -----------------------------------------------------------------------------
+// 3. Fetch ADMIN_ACTIVITY_LOG Portal-Wide Audit Trail
+// -----------------------------------------------------------------------------
+$actStmt = $conn->prepare("
+    SELECT
+        a.Activity_ID,
+        a.Admin_ID,
+        a.Target_Entity,
+        a.Target_ID,
+        a.Action_Type,
+        a.Details,
+        a.Created_At,
+        u_admin.User_FName AS Admin_FName,
+        u_admin.User_LName AS Admin_LName
+    FROM ADMIN_ACTIVITY_LOG a
+    LEFT JOIN `USER` u_admin ON a.Admin_ID = u_admin.User_ID
+    ORDER BY a.Created_At DESC, a.Activity_ID DESC
+");
+$actStmt->execute();
+$actRes = $actStmt->get_result();
+
+$activityLogs = [];
+$totalActivityCount = 0;
+while ($aRow = $actRes->fetch_assoc()) {
+    $totalActivityCount++;
+    if ($entityFilter !== 'All' && ($aRow['Target_Entity'] ?? '') !== $entityFilter) {
+        continue;
+    }
+    if ($searchUser !== '') {
+        $adminName = trim(($aRow['Admin_FName'] ?? '') . ' ' . ($aRow['Admin_LName'] ?? ''));
+        $actMatch = stripos((string)$aRow['Target_ID'], $searchUser) !== false
+                 || stripos((string)$aRow['Admin_ID'], $searchUser) !== false
+                 || stripos((string)($aRow['Target_Entity'] ?? ''), $searchUser) !== false
+                 || stripos((string)($aRow['Action_Type'] ?? ''), $searchUser) !== false
+                 || stripos((string)($aRow['Details'] ?? ''), $searchUser) !== false
+                 || stripos($adminName, $searchUser) !== false;
+        if (!$actMatch) {
+            continue;
+        }
+    }
+    $activityLogs[] = $aRow;
+}
+$actStmt->close();
 
 /**
- * Helper to compute field-level diffs between Current and Requested values
+ * Compute field-level diffs between Current and Requested values (for Pending / Rejected rows).
  */
 function computeRequestDiffs(array $r): array {
     $fields = [
@@ -203,7 +244,6 @@ function computeRequestDiffs(array $r): array {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Profile Change Requests &amp; Audit Log | Lucid University Admin</title>
-    <!-- Minimal Clean Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         .diff-old {
@@ -224,7 +264,6 @@ function computeRequestDiffs(array $r): array {
 </head>
 <body class="bg-light">
 
-    <!-- Unified Admin Top Navigation -->
     <?= renderAdminNavbar($conn, $admin_id, basename($_SERVER['PHP_SELF'])) ?>
 
     <div class="container-fluid px-lg-5 mb-5">
@@ -249,12 +288,15 @@ function computeRequestDiffs(array $r): array {
             <div class="card-body p-4 bg-white rounded-3">
                 <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
                     <div>
-                        <h2 class="fw-bold mb-1">Profile Change Requests &amp; User Update Log</h2>
+                        <h2 class="fw-bold mb-1">Profile Change Requests &amp; System Audit Hub</h2>
                         <p class="text-secondary mb-0">
-                            Review student profile update requests, approve or reject modifications, and inspect the <code>USER_UPDATE_LOG</code> audit trail.
+                            Review student and faculty profile update requests, inspect <code>USER_UPDATE_LOG</code> records, and track all administrator activity in <code>ADMIN_ACTIVITY_LOG</code>.
                         </p>
                     </div>
                     <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-dark-subtle text-dark border border-dark-subtle px-3 py-2 fs-6">
+                            Total Admin Activity: <?= $totalActivityCount ?>
+                        </span>
                         <?php if ($canWrite): ?>
                             <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-2 fs-6">
                                 Security Level <?= (int)($_SESSION['Security_Level'] ?? 2) ?>: Write Access Enabled
@@ -267,33 +309,40 @@ function computeRequestDiffs(array $r): array {
                     </div>
                 </div>
 
-                <div class="row g-3 mt-3">
-                    <div class="col-sm-6 col-lg-3">
-                        <div class="p-3 bg-light rounded-3 border">
+                <div class="row row-cols-1 row-cols-sm-2 row-cols-xl-5 g-3 mt-3">
+                    <div class="col">
+                        <div class="p-3 bg-light rounded-3 border h-100">
                             <div class="text-secondary small fw-semibold text-uppercase">Pending Review</div>
                             <div class="h3 fw-bold mb-0 text-warning"><?= $pendingCount ?></div>
                             <div class="small text-muted">Awaiting admin decision</div>
                         </div>
                     </div>
-                    <div class="col-sm-6 col-lg-3">
-                        <div class="p-3 bg-light rounded-3 border">
+                    <div class="col">
+                        <div class="p-3 bg-light rounded-3 border h-100">
                             <div class="text-secondary small fw-semibold text-uppercase">Approved Requests</div>
                             <div class="h3 fw-bold mb-0 text-success"><?= $approvedCount ?></div>
                             <div class="small text-muted">Applied to USER table</div>
                         </div>
                     </div>
-                    <div class="col-sm-6 col-lg-3">
-                        <div class="p-3 bg-light rounded-3 border">
+                    <div class="col">
+                        <div class="p-3 bg-light rounded-3 border h-100">
                             <div class="text-secondary small fw-semibold text-uppercase">Rejected Requests</div>
                             <div class="h3 fw-bold mb-0 text-danger"><?= $rejectedCount ?></div>
                             <div class="small text-muted">Declined by administrator</div>
                         </div>
                     </div>
-                    <div class="col-sm-6 col-lg-3">
-                        <div class="p-3 bg-light rounded-3 border">
-                            <div class="text-secondary small fw-semibold text-uppercase">Audit Log Entries</div>
+                    <div class="col">
+                        <div class="p-3 bg-light rounded-3 border h-100">
+                            <div class="text-secondary small fw-semibold text-uppercase">User Update Log</div>
                             <div class="h3 fw-bold mb-0 text-primary"><?= count($auditLogs) ?></div>
                             <div class="small text-muted">Recorded in USER_UPDATE_LOG</div>
+                        </div>
+                    </div>
+                    <div class="col">
+                        <div class="p-3 bg-light rounded-3 border h-100">
+                            <div class="text-secondary small fw-semibold text-uppercase">All Admin Activity</div>
+                            <div class="h3 fw-bold mb-0 text-dark"><?= $totalActivityCount ?></div>
+                            <div class="small text-muted">Recorded in ADMIN_ACTIVITY_LOG</div>
                         </div>
                     </div>
                 </div>
@@ -305,14 +354,20 @@ function computeRequestDiffs(array $r): array {
             <ul class="nav nav-pills" role="tablist">
                 <li class="nav-item">
                     <a class="nav-link <?= $activeTab === 'requests' ? 'active fw-bold' : 'text-dark' ?>"
-                       href="?tab=requests&status=<?= urlencode($statusFilter) ?>&search_user=<?= urlencode($searchUser) ?>">
-                        Student Change Requests (<?= count($allRequests) ?>)
+                       href="?tab=requests&status=<?= urlencode($statusFilter) ?>&role=<?= urlencode($roleFilter) ?>&search_user=<?= urlencode($searchUser) ?>">
+                        Profile Change Requests (<?= count($allRequests) ?>)
                     </a>
                 </li>
                 <li class="nav-item">
                     <a class="nav-link <?= $activeTab === 'audit_log' ? 'active fw-bold' : 'text-dark' ?>"
-                       href="?tab=audit_log&search_user=<?= urlencode($searchUser) ?>">
+                       href="?tab=audit_log&role=<?= urlencode($roleFilter) ?>&search_user=<?= urlencode($searchUser) ?>">
                         USER_UPDATE_LOG Audit Trail (<?= count($auditLogs) ?>)
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link <?= $activeTab === 'activity_log' ? 'active fw-bold' : 'text-dark' ?>"
+                       href="?tab=activity_log&entity=<?= urlencode($entityFilter) ?>&search_user=<?= urlencode($searchUser) ?>">
+                        All Admin Activity (<?= count($activityLogs) ?>)
                     </a>
                 </li>
             </ul>
@@ -327,19 +382,33 @@ function computeRequestDiffs(array $r): array {
                         <option value="Rejected" <?= $statusFilter === 'Rejected' ? 'selected' : '' ?>>Rejected Only (<?= $rejectedCount ?>)</option>
                     </select>
                 <?php endif; ?>
+                <?php if ($activeTab === 'activity_log'): ?>
+                    <select name="entity" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
+                        <?php foreach ($validEntities as $entOption): ?>
+                            <option value="<?= htmlspecialchars($entOption, ENT_QUOTES, 'UTF-8') ?>" <?= $entityFilter === $entOption ? 'selected' : '' ?>>
+                                <?= $entOption === 'All' ? 'All Entities' : htmlspecialchars($entOption, ENT_QUOTES, 'UTF-8') ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                <?php else: ?>
+                    <select name="role" class="form-select form-select-sm" style="width: auto;" onchange="this.form.submit()">
+                        <option value="All" <?= $roleFilter === 'All' ? 'selected' : '' ?>>All Roles</option>
+                        <option value="Student" <?= $roleFilter === 'Student' ? 'selected' : '' ?>>Students</option>
+                        <option value="Faculty" <?= $roleFilter === 'Faculty' ? 'selected' : '' ?>>Faculty</option>
+                    </select>
+                <?php endif; ?>
                 <input type="text" name="search_user" class="form-control form-control-sm" style="width: 240px;"
-                       placeholder="Search Student ID or Name..." value="<?= htmlspecialchars($searchUser, ENT_QUOTES, 'UTF-8') ?>">
+                       placeholder="<?= $activeTab === 'activity_log' ? 'Search Target, Action, or Details...' : 'Search User ID or Name...' ?>"
+                       value="<?= htmlspecialchars($searchUser, ENT_QUOTES, 'UTF-8') ?>">
                 <button type="submit" class="btn btn-primary btn-sm">Filter</button>
-                <?php if ($searchUser !== '' || $statusFilter !== 'All'): ?>
+                <?php if ($searchUser !== '' || $statusFilter !== 'All' || $roleFilter !== 'All' || $entityFilter !== 'All'): ?>
                     <a href="manage_change_requests.php?tab=<?= urlencode($activeTab) ?>" class="btn btn-outline-secondary btn-sm">Reset</a>
                 <?php endif; ?>
             </form>
         </div>
 
         <?php if ($activeTab === 'requests'): ?>
-            <!-- =============================================================== -->
-            <!-- TAB 1: STUDENT PROFILE CHANGE REQUESTS                          -->
-            <!-- =============================================================== -->
+            <!-- TAB 1: PROFILE CHANGE REQUESTS -->
             <div class="card shadow-sm border-0">
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -347,10 +416,10 @@ function computeRequestDiffs(array $r): array {
                             <thead class="table-dark">
                                 <tr>
                                     <th>Req #</th>
-                                    <th>Student Details</th>
+                                    <th>User Details</th>
                                     <th>Submitted At</th>
                                     <th style="min-width: 340px;">Requested Changes (Current &rarr; Requested)</th>
-                                    <th>Student Reason</th>
+                                    <th>Requester Reason</th>
                                     <th>Status / Reviewer</th>
                                     <th class="text-end pe-3" style="min-width: 240px;">Admin Decision</th>
                                 </tr>
@@ -365,20 +434,30 @@ function computeRequestDiffs(array $r): array {
                                 <?php else: ?>
                                     <?php foreach ($allRequests as $r): ?>
                                         <?php
-                                            $diffs = computeRequestDiffs($r);
-                                            $curFullName = trim(($r['Cur_FName'] ?? '') . ' ' . ($r['Cur_MName'] ? $r['Cur_MName'] . ' ' : '') . ($r['Cur_LName'] ?? ''));
+                                            $curFullName = trim(($r['Cur_FName'] ?? '') . ' ' . (!empty($r['Cur_MName']) ? $r['Cur_MName'] . ' ' : '') . ($r['Cur_LName'] ?? ''));
                                             $statusBadge = match($r['Request_Status']) {
                                                 'Approved' => 'bg-success',
                                                 'Rejected' => 'bg-danger',
                                                 default    => 'bg-warning text-dark'
                                             };
+                                            $roleBadge = match($r['User_Type'] ?? '') {
+                                                'Faculty' => 'bg-info text-dark',
+                                                'Student' => 'bg-success-subtle text-success border border-success-subtle',
+                                                default   => 'bg-secondary'
+                                            };
+                                            $diffs = ($r['Request_Status'] !== 'Approved') ? computeRequestDiffs($r) : [];
                                         ?>
                                         <tr>
                                             <td class="font-monospace fw-bold">#<?= (int)$r['Request_ID'] ?></td>
                                             <td>
-                                                <a href="../user_profile.php?user_id=<?= (int)$r['User_ID'] ?>" class="fw-bold text-dark text-decoration-none">
-                                                    <?= htmlspecialchars($curFullName, ENT_QUOTES, 'UTF-8') ?>
-                                                </a>
+                                                <div class="d-flex align-items-center gap-1 flex-wrap">
+                                                    <a href="../user_profile.php?user_id=<?= (int)$r['User_ID'] ?>" class="fw-bold text-dark text-decoration-none">
+                                                        <?= htmlspecialchars($curFullName, ENT_QUOTES, 'UTF-8') ?>
+                                                    </a>
+                                                    <span class="badge <?= $roleBadge ?>" style="font-size: 0.7rem;">
+                                                        <?= htmlspecialchars($r['User_Type'] ?? 'User', ENT_QUOTES, 'UTF-8') ?>
+                                                    </span>
+                                                </div>
                                                 <div class="small text-secondary font-monospace">ID: <?= (int)$r['User_ID'] ?></div>
                                                 <div class="small text-muted"><?= htmlspecialchars($r['User_Email'] ?? '', ENT_QUOTES, 'UTF-8') ?></div>
                                             </td>
@@ -386,7 +465,14 @@ function computeRequestDiffs(array $r): array {
                                                 <?= htmlspecialchars($r['Requested_At'], ENT_QUOTES, 'UTF-8') ?>
                                             </td>
                                             <td>
-                                                <?php if (empty($diffs)): ?>
+                                                <?php if ($r['Request_Status'] === 'Approved'): ?>
+                                                    <div class="small text-success">
+                                                        <strong>Applied to user profile.</strong>
+                                                        <a href="manage_change_requests.php?tab=audit_log&search_user=<?= (int)$r['User_ID'] ?>" class="text-decoration-none ms-1">
+                                                            Inspect logged columns &rarr;
+                                                        </a>
+                                                    </div>
+                                                <?php elseif (empty($diffs)): ?>
                                                     <span class="text-muted small"><em>Values already match current on-file record</em></span>
                                                 <?php else: ?>
                                                     <div class="small">
@@ -456,10 +542,8 @@ function computeRequestDiffs(array $r): array {
                 </div>
             </div>
 
-        <?php else: ?>
-            <!-- =============================================================== -->
-            <!-- TAB 2: USER_UPDATE_LOG AUDIT TRAIL                              -->
-            <!-- =============================================================== -->
+        <?php elseif ($activeTab === 'audit_log'): ?>
+            <!-- TAB 2: USER_UPDATE_LOG AUDIT TRAIL -->
             <div class="card shadow-sm border-0">
                 <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                     <h5 class="mb-0 fw-bold">USER_UPDATE_LOG Audit Records</h5>
@@ -473,7 +557,7 @@ function computeRequestDiffs(array $r): array {
                                     <th>Log ID</th>
                                     <th>Date &amp; Time of Change</th>
                                     <th>Target User Updated</th>
-                                    <th>Changed Attribute (<code>USER</code> Column)</th>
+                                    <th>Action / Changed Attribute</th>
                                     <th>Permitted By Administrator</th>
                                 </tr>
                             </thead>
@@ -493,6 +577,11 @@ function computeRequestDiffs(array $r): array {
                                                 <a href="../user_profile.php?user_id=<?= (int)$log['User_ID'] ?>" class="fw-bold text-decoration-none">
                                                     <?= htmlspecialchars(trim(($log['Target_FName'] ?? '') . ' ' . ($log['Target_LName'] ?? '')), ENT_QUOTES, 'UTF-8') ?: ('User #' . (int)$log['User_ID']) ?>
                                                 </a>
+                                                <?php if (!empty($log['Target_Type'])): ?>
+                                                    <span class="badge bg-light text-dark border ms-1" style="font-size: 0.7rem;">
+                                                        <?= htmlspecialchars($log['Target_Type'], ENT_QUOTES, 'UTF-8') ?>
+                                                    </span>
+                                                <?php endif; ?>
                                                 <span class="badge bg-secondary-subtle text-secondary border ms-1 font-monospace">ID: <?= (int)$log['User_ID'] ?></span>
                                             </td>
                                             <td>
@@ -514,11 +603,84 @@ function computeRequestDiffs(array $r): array {
                     </div>
                 </div>
             </div>
+        <?php else: ?>
+            <!-- TAB 3: ADMIN_ACTIVITY_LOG PORTAL-WIDE AUDIT TRAIL -->
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold">Portal-Wide Administrator Activity Log (<code>ADMIN_ACTIVITY_LOG</code>)</h5>
+                    <span class="badge bg-dark"><?= count($activityLogs) ?> Activity Entries</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped align-middle mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Activity ID</th>
+                                    <th>Date &amp; Time</th>
+                                    <th>Entity &amp; Target ID</th>
+                                    <th>Action</th>
+                                    <th>Details</th>
+                                    <th>Administrator</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php if (empty($activityLogs)): ?>
+                                    <tr>
+                                        <td colspan="6" class="text-center py-5 text-muted">
+                                            No administrator activity entries found matching your filter criteria.
+                                        </td>
+                                    </tr>
+                                <?php else: ?>
+                                    <?php foreach ($activityLogs as $act):
+                                        $actionBadge = match ($act['Action_Type'] ?? '') {
+                                            'Create', 'Approve', 'Apply', 'Assign' => 'bg-success',
+                                            'Update' => 'bg-primary',
+                                            'Delete', 'Reject', 'Remove', 'Unassign' => 'bg-danger',
+                                            default => 'bg-secondary',
+                                        };
+                                        $entityName = $act['Target_Entity'] ?? '';
+                                        $targetIdVal = $act['Target_ID'] ?? '';
+                                        $isUserTarget = in_array($entityName, ['User', 'Student Hold', 'Advisor'], true) && ctype_digit((string)$targetIdVal);
+                                    ?>
+                                        <tr>
+                                            <td class="font-monospace fw-bold">#<?= (int)$act['Activity_ID'] ?></td>
+                                            <td class="font-monospace small"><?= htmlspecialchars($act['Created_At'], ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td>
+                                                <span class="badge bg-light text-dark border me-1"><?= htmlspecialchars($entityName, ENT_QUOTES, 'UTF-8') ?></span>
+                                                <?php if ($isUserTarget): ?>
+                                                    <a href="../user_profile.php?user_id=<?= (int)$targetIdVal ?>" class="badge bg-secondary-subtle text-primary border font-monospace text-decoration-none">
+                                                        ID: <?= htmlspecialchars((string)$targetIdVal, ENT_QUOTES, 'UTF-8') ?>
+                                                    </a>
+                                                <?php else: ?>
+                                                    <span class="badge bg-secondary-subtle text-dark border font-monospace">
+                                                        <?= htmlspecialchars((string)$targetIdVal, ENT_QUOTES, 'UTF-8') ?>
+                                                    </span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td>
+                                                <span class="badge <?= $actionBadge ?>">
+                                                    <?= htmlspecialchars($act['Action_Type'] ?? '', ENT_QUOTES, 'UTF-8') ?>
+                                                </span>
+                                            </td>
+                                            <td class="small"><?= htmlspecialchars($act['Details'] ?? '', ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td>
+                                                <span class="fw-semibold">
+                                                    <?= htmlspecialchars(trim(($act['Admin_FName'] ?? '') . ' ' . ($act['Admin_LName'] ?? '')), ENT_QUOTES, 'UTF-8') ?: ('Admin #' . (int)$act['Admin_ID']) ?>
+                                                </span>
+                                                <span class="small text-muted font-monospace ms-1">(ID: <?= (int)$act['Admin_ID'] ?>)</span>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                <?php endif; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
         <?php endif; ?>
 
     </div>
 
-    <!-- Bootstrap 5.3 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

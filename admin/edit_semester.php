@@ -117,7 +117,7 @@ $suggestedID = $defaultYear * 100 + 1; // e.g. 202701
             <div class="alert alert-warning shadow-sm border-0" role="alert">
                 <h6 class="fw-bold mb-1">&#9888; Past Semester Constraint Active</h6>
                 <div class="small">
-                    This semester concluded on <strong><?= htmlspecialchars($semester['End_Date']) ?></strong>. Per university SRS safety constraints, past semester schedules and information relations cannot be mutated. Fields are displayed in read-only mode.
+                    This semester concluded on <strong><?= htmlspecialchars($semester['End_Date']) ?></strong>. Per university policy, past semester schedules and information relations cannot be mutated. Fields are displayed in read-only mode.
                 </div>
             </div>
         <?php elseif ($isOngoing): ?>
