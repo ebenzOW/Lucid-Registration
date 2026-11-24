@@ -8,6 +8,7 @@ require_once 'admin_guard.php';
 require_once '../db_connect.php';
 require_once __DIR__ . '/../includes/auth_helpers.php';
 require_once __DIR__ . '/../includes/schedule_helpers.php';
+require_once __DIR__ . '/../includes/audit_helpers.php';
 
 $admin_id = (int)$userID;
 
@@ -128,6 +129,15 @@ try {
             $pIns->close();
         }
 
+        logAdminActivity(
+            $conn,
+            $admin_id,
+            'Course',
+            $course_id,
+            'Create',
+            "{$course_name} ({$course_type}, {$course_credits} cr, " . count($cleanPrereqs) . " prereq(s))"
+        );
+
         $conn->commit();
         $inTransaction = false;
         $_SESSION['success_message'] = "Course {$course_id} ({$course_name}) was successfully created with " . count($cleanPrereqs) . " prerequisite(s).";
@@ -243,6 +253,15 @@ try {
             $insP->close();
         }
 
+        logAdminActivity(
+            $conn,
+            $admin_id,
+            'Course',
+            $course_id,
+            'Update',
+            "{$course_name} ({$course_type}, {$course_credits} cr, " . count($cleanPrereqs) . " prereq(s))"
+        );
+
         $conn->commit();
         $inTransaction = false;
         $_SESSION['success_message'] = "Course {$course_id} was successfully updated with " . count($cleanPrereqs) . " prerequisite(s).";
@@ -314,6 +333,8 @@ try {
         $delC->bind_param("s", $course_id);
         $delC->execute();
         $delC->close();
+
+        logAdminActivity($conn, $admin_id, 'Course', $course_id, 'Delete', "Deleted course {$course_id} from catalog");
 
         $conn->commit();
         $inTransaction = false;

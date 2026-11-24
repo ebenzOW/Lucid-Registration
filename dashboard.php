@@ -9,7 +9,7 @@ match ($userType) {
     'Student'   => header("Location: student/dashboard.php"),
     'Faculty'   => header("Location: faculty/dashboard.php"),
     'Admin'     => header("Location: admin/dashboard.php"),
-    'Stat-Dept' => header("Location: stat_dept/dashboard.php"),
+    'Stat-Dept' => header("Location: stat_department/stat_department_dashboard.php"),
     default     => header("Location: login.php"),
 };
 exit;

@@ -14,6 +14,7 @@
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
 require_once __DIR__ . '/../includes/auth_helpers.php';
+require_once __DIR__ . '/../includes/audit_helpers.php';
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: manage_advisors.php");
@@ -148,12 +149,16 @@ try {
         }
         $insStmt->close();
 
-        // 8. Log to USER_UPDATE_LOG
-        $attr = substr("Assigned Advisor ID: " . $faculty_id, 0, 50);
-        $logStmt = $conn->prepare("INSERT INTO USER_UPDATE_LOG (Admin_ID, User_ID, Changed_Attribute, Date_Of_Change) VALUES (?, ?, ?, NOW())");
-        $logStmt->bind_param("iis", $admin_id, $student_id, $attr);
-        $logStmt->execute();
-        $logStmt->close();
+        // 8. Log to USER_UPDATE_LOG and ADMIN_ACTIVITY_LOG
+        logUserUpdate($conn, $admin_id, $student_id, "Assigned Advisor ID: " . $faculty_id);
+        logAdminActivity(
+            $conn,
+            $admin_id,
+            'Advisor',
+            $student_id,
+            'Assign',
+            "Assigned Prof. {$faculty['User_FName']} {$faculty['User_LName']} (Faculty ID: {$faculty_id})"
+        );
 
         $conn->commit();
         $inTransaction = false;
@@ -255,10 +260,6 @@ try {
             VALUES (?, ?, CURDATE())
             ON DUPLICATE KEY UPDATE Date_Assigned = VALUES(Date_Assigned)
         ");
-        $logStmt = $conn->prepare("
-            INSERT INTO USER_UPDATE_LOG (Admin_ID, User_ID, Changed_Attribute, Date_Of_Change)
-            VALUES (?, ?, ?, NOW())
-        ");
 
         $assignedCount = 0;
         $skippedCount  = 0;
@@ -291,16 +292,21 @@ try {
             $insStmt->bind_param("ii", $faculty_id, $sid);
             if ($insStmt->execute()) {
                 $assignedCount++;
-                $attr = substr("Assigned Advisor ID: " . $faculty_id, 0, 50);
-                $logStmt->bind_param("iis", $admin_id, $sid, $attr);
-                $logStmt->execute();
+                logUserUpdate($conn, $admin_id, $sid, "Assigned Advisor ID: " . $faculty_id);
+                logAdminActivity(
+                    $conn,
+                    $admin_id,
+                    'Advisor',
+                    $sid,
+                    'Assign',
+                    "Batch assigned Prof. {$faculty['User_FName']} {$faculty['User_LName']} (Faculty ID: {$faculty_id})"
+                );
             }
         }
 
         $stuDeptStmt->close();
         $stuMajorsStmt->close();
         $insStmt->close();
-        $logStmt->close();
 
         $conn->commit();
         $inTransaction = false;
@@ -331,11 +337,8 @@ try {
         }
         $delStmt->close();
 
-        $attr = substr("Removed Advisor ID: " . $faculty_id, 0, 50);
-        $logStmt = $conn->prepare("INSERT INTO USER_UPDATE_LOG (Admin_ID, User_ID, Changed_Attribute, Date_Of_Change) VALUES (?, ?, ?, NOW())");
-        $logStmt->bind_param("iis", $admin_id, $student_id, $attr);
-        $logStmt->execute();
-        $logStmt->close();
+        logUserUpdate($conn, $admin_id, $student_id, "Removed Advisor ID: " . $faculty_id);
+        logAdminActivity($conn, $admin_id, 'Advisor', $student_id, 'Unassign', "Removed advisor Faculty ID {$faculty_id}");
 
         $conn->commit();
         $inTransaction = false;

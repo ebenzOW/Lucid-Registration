@@ -12,6 +12,9 @@ require_once 'admin_guard.php';
 require_once '../db_connect.php';
 require_once __DIR__ . '/../includes/auth_helpers.php';
 require_once __DIR__ . '/../includes/faculty_helpers.php';
+require_once __DIR__ . '/../includes/audit_helpers.php';
+
+$admin_id = (int)$userID;
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     header("Location: master_schedule.php");
@@ -194,6 +197,8 @@ try {
         $upStmt->execute();
         $upStmt->close();
 
+        $activityDetails = "Course {$sec['Course_ID']} Sec {$sec['Section_Number']} (Sem {$semId}, Faculty {$newFacultyId}, Room {$newRoomId})";
+
     } elseif ($isFuture) {
         // Future Semester: Instructor, Room, Time Slot, Seats, and Status can be modified
         $newTimeSlotId   = filter_input(INPUT_POST, 'time_slot_id', FILTER_VALIDATE_INT);
@@ -326,7 +331,11 @@ try {
         $upStmt->bind_param("isiisi", $newFacultyId, $newRoomId, $newTimeSlotId, $newSeats, $newStatus, $crn);
         $upStmt->execute();
         $upStmt->close();
+
+        $activityDetails = "Course {$sec['Course_ID']} Sec {$sec['Section_Number']} (Sem {$semId}, Faculty {$newFacultyId}, Room {$newRoomId}, Slot {$newTimeSlotId}, Seats {$newSeats}, Status {$newStatus})";
     }
+
+    logAdminActivity($conn, $admin_id, 'Course Section', $crn, 'Update', $activityDetails ?? "Updated CRN {$crn} (Sem {$semId})");
 
     $conn->commit();
     $inTransaction = false;

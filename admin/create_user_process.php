@@ -3,6 +3,9 @@ require_once 'admin_guard.php';
 require_once '../db_connect.php';
 require_once __DIR__ . '/../includes/user_helpers.php';
 require_once __DIR__ . '/../includes/auth_helpers.php';
+require_once __DIR__ . '/../includes/audit_helpers.php';
+
+$admin_id = (int)$userID;
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: create_user.php");
@@ -37,38 +40,41 @@ try {
     $conn->begin_transaction();
     $inTransaction = true;
 
-    $userID = generateUserID($conn);
+    $newUserID = generateUserID($conn);
 
-    createUser($conn, $userID, $_POST);
-    createLogin($conn, $userID, $_POST);
+    createUser($conn, $newUserID, $_POST);
+    createLogin($conn, $newUserID, $_POST);
 
     if ($userType === "Admin") {
-        createAdmin($conn, $userID, $_POST);
+        createAdmin($conn, $newUserID, $_POST);
     }
 
     if ($userType === "Student") {
-        createStudent($conn, $userID, $_POST);
+        createStudent($conn, $newUserID, $_POST);
     }
 
     if ($userType === "Faculty") {
-        createFaculty($conn, $userID, $_POST);
+        createFaculty($conn, $newUserID, $_POST);
     }
 
     if ($userType === "Stat-Dept") {
-        createStatDept($conn, $userID, $_POST);
+        createStatDept($conn, $newUserID, $_POST);
     }
+
+    logUserUpdate($conn, $admin_id, $newUserID, "Created {$userType} Account");
+    logAdminActivity($conn, $admin_id, 'User', $newUserID, 'Create', "Created {$userType} account (" . trim($_POST["email"]) . ")");
 
     $conn->commit();
     $inTransaction = false;
 
     $_SESSION["success_message"] =
-        "User successfully created. User ID: " . $userID;
+        "User successfully created. User ID: " . $newUserID;
 
     $sessionPackage = $_POST;
     unset($sessionPackage["password"]); 
     
     $_SESSION["new_user_data"] = $sessionPackage;
-    $_SESSION["new_user_data"]["user_id"] = $userID;
+    $_SESSION["new_user_data"]["user_id"] = $newUserID;
 
 } catch (Exception $e) {
     if ($inTransaction) {

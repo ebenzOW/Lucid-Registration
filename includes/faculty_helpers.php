@@ -44,6 +44,81 @@ function getFacultyProfile(mysqli $conn, int $faculty_id): ?array {
 }
 
 /**
+ * Retrieve extended faculty profile details including department roster, leadership,
+ * term teaching loads, and optional advisee list.
+ */
+function getFacultyProfileDetails(mysqli $conn, int $faculty_id, bool $includeAdviseeList = false): array {
+    $facultyProfile = getFacultyProfile($conn, $faculty_id);
+    $facultyData = $facultyProfile ?: [];
+    $facultyData['Building_Name'] = $facultyProfile['Office_Building_Name'] ?? '';
+    $facultyData['Room_NO'] = $facultyProfile['Office_Room_NO'] ?? '';
+
+    $drStmt = $conn->prepare("
+        SELECT d.Department_Name, dr.Percent_Time, dr.Date_of_Assignment
+        FROM DEPARTMENT_ROSTER dr
+        JOIN DEPARTMENT d ON dr.Department_ID = d.Department_ID
+        WHERE dr.Faculty_ID = ?
+        ORDER BY dr.Percent_Time DESC
+    ");
+    $drStmt->bind_param("i", $faculty_id);
+    $drStmt->execute();
+    $drRes = $drStmt->get_result();
+    $departments = [];
+    while ($drRow = $drRes->fetch_assoc()) {
+        $departments[] = $drRow;
+    }
+    $drStmt->close();
+    $facultyData['departments'] = $departments;
+
+    $leadStmt = $conn->prepare("
+        SELECT d.Department_Name, 'Department Chair' AS Role_Title
+        FROM DEPARTMENT d
+        WHERE d.Chair_ID = ?
+        UNION
+        SELECT d.Department_Name, dm.Role AS Role_Title
+        FROM DEPARTMENT_MANAGERS dm
+        JOIN DEPARTMENT d ON dm.Department_ID = d.Department_ID
+        WHERE dm.Faculty_ID = ?
+    ");
+    $leadStmt->bind_param("ii", $faculty_id, $faculty_id);
+    $leadStmt->execute();
+    $leadRes = $leadStmt->get_result();
+    $leadership = [];
+    while ($leadRow = $leadRes->fetch_assoc()) {
+        $leadership[] = $leadRow;
+    }
+    $leadStmt->close();
+    $facultyData['leadership'] = $leadership;
+
+    $secCountStmt = $conn->prepare("
+        SELECT
+            (SELECT COUNT(*) FROM COURSE_SECTIONS WHERE Faculty_ID = ? AND Semester_ID = 202608) AS fall_load,
+            (SELECT COUNT(*) FROM COURSE_SECTIONS WHERE Faculty_ID = ? AND Semester_ID = 202701) AS spring_load
+    ");
+    $secCountStmt->bind_param("ii", $faculty_id, $faculty_id);
+    $secCountStmt->execute();
+    $loadCounts = $secCountStmt->get_result()->fetch_assoc();
+    $secCountStmt->close();
+    $facultyData['fall_load'] = (int)($loadCounts['fall_load'] ?? 0);
+    $facultyData['spring_load'] = (int)($loadCounts['spring_load'] ?? 0);
+
+    if ($includeAdviseeList) {
+        $advisees = getFacultyAdvisees($conn, $faculty_id);
+        $facultyData['advisees'] = $advisees;
+        $facultyData['advisee_count'] = count($advisees);
+    } else {
+        $facultyData['advisees'] = [];
+        $advCountStmt = $conn->prepare("SELECT COUNT(*) AS cnt FROM ADVISOR_STUDENT WHERE Faculty_ID = ?");
+        $advCountStmt->bind_param("i", $faculty_id);
+        $advCountStmt->execute();
+        $facultyData['advisee_count'] = (int)($advCountStmt->get_result()->fetch_assoc()['cnt'] ?? 0);
+        $advCountStmt->close();
+    }
+
+    return $facultyData;
+}
+
+/**
  * Fetch teaching schedule for a faculty member in a specific semester (or across all semesters if $semester_id is null).
  */
 function getFacultyScheduleBySemester(mysqli $conn, int $faculty_id, ?int $semester_id = null): array {
@@ -260,6 +335,25 @@ function getFacultyAdvisees(mysqli $conn, int $faculty_id): array {
     $stmt->close();
 
     return $advisees;
+}
+
+/**
+ * Count students assigned to a faculty advisor.
+ */
+function getFacultyAdviseeCount(mysqli $conn, int $faculty_id): int {
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) AS total
+        FROM ADVISOR_STUDENT
+        WHERE Faculty_ID = ?
+    ");
+
+    $stmt->bind_param("i", $faculty_id);
+    $stmt->execute();
+
+    $count = (int)$stmt->get_result()->fetch_assoc()['total'];
+    $stmt->close();
+
+    return $count;
 }
 
 /**

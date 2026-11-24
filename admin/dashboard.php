@@ -16,6 +16,7 @@ $admin_id = (int)$userID;
 </head>
 <body class="bg-light">
 
+    <!-- Unified Admin Top Navigation -->
     <?= renderAdminNavbar($conn, $admin_id, basename($_SERVER['PHP_SELF'])) ?>
 
     <div class="container-fluid px-lg-5 mb-5">
@@ -64,19 +65,6 @@ $admin_id = (int)$userID;
                         </p>
                         <a href="view_users.php" class="btn btn-outline-secondary btn-sm mt-2">
                             View Directory &rarr;
-                        </a>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card h-100 shadow-sm border-0">
-                    <div class="card-body p-4 d-flex flex-column">
-                        <h5 class="fw-bold text-dark mb-2">Master Course Schedule</h5>
-                        <p class="text-secondary small flex-grow-1">
-                            Browse catalog sections across past, current, and upcoming semesters with live seat counts, section statuses, faculty profiles, and student rosters.
-                        </p>
-                        <a href="master_schedule.php" class="btn btn-primary btn-sm mt-2">
-                            View Master Schedule &rarr;
                         </a>
                     </div>
                 </div>
@@ -149,13 +137,9 @@ $admin_id = (int)$userID;
             <div class="col-md-4">
                 <div class="card h-100 shadow-sm border-0">
                     <div class="card-body p-4 d-flex flex-column">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <h5 class="fw-bold text-dark mb-0">Academic Advising</h5>
-
-                        </div>
+                        <h5 class="fw-bold text-dark mb-2">Academic Advising</h5>
                         <p class="text-secondary small flex-grow-1">
                             Inspect student advisor assignments, review faculty advisee rosters, verify advising capacities (max 15), and assign eligible full-time faculty.
-
                         </p>
                         <a href="manage_advisors.php" class="btn btn-outline-primary btn-sm mt-2">
                             Manage Advising &rarr;
@@ -166,12 +150,25 @@ $admin_id = (int)$userID;
             <div class="col-md-4">
                 <div class="card h-100 shadow-sm border-0">
                     <div class="card-body p-4 d-flex flex-column">
-                        <h5 class="fw-bold text-dark mb-2">Campus Facilities</h5>
+                        <h5 class="fw-bold text-dark mb-2">Academic Departments</h5>
                         <p class="text-secondary small flex-grow-1">
-                            Manage campus infrastructure, academic buildings, lecture halls, computer/science laboratories, and faculty department offices.
+                            View department programs and manage department records, contact information, offices, and chairs.
                         </p>
-                        <a href="manage_facilities.php" class="btn btn-outline-primary btn-sm mt-2">
-                            Manage Facilities &rarr;
+                        <a href="manage_departments.php" class="btn btn-outline-primary btn-sm mt-2">
+                            Manage Departments &rarr;
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card h-100 shadow-sm border-0">
+                    <div class="card-body p-4 d-flex flex-column">
+                        <h5 class="fw-bold text-dark mb-2">Profile Change Requests</h5>
+                        <p class="text-secondary small flex-grow-1">
+                            Review pending student and faculty personal profile update requests, approve or reject modifications, and inspect the USER_UPDATE_LOG audit trail.
+                        </p>
+                        <a href="manage_change_requests.php" class="btn btn-outline-primary btn-sm mt-2">
+                            Review Requests &rarr;
                         </a>
                     </div>
                 </div>

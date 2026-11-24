@@ -14,6 +14,9 @@
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
 require_once __DIR__ . '/../includes/auth_helpers.php';
+require_once __DIR__ . '/../includes/audit_helpers.php';
+
+$admin_id = (int)$userID;
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: manage_facilities.php");
@@ -62,6 +65,8 @@ try {
         }
         $insStmt->close();
 
+        logAdminActivity($conn, $admin_id, 'Building', $building_id, 'Create', "{$building_name}" . ($usage_purpose !== '' ? " ({$usage_purpose})" : ''));
+
         $conn->commit();
         $inTransaction = false;
 
@@ -102,6 +107,8 @@ try {
             throw new Exception("Failed to update building: " . $updStmt->error);
         }
         $updStmt->close();
+
+        logAdminActivity($conn, $admin_id, 'Building', $building_id, 'Update', "{$building_name}" . ($usage_purpose !== '' ? " ({$usage_purpose})" : ''));
 
         $conn->commit();
         $inTransaction = false;
@@ -194,6 +201,8 @@ try {
             $subStmt->execute();
             $subStmt->close();
         }
+
+        logAdminActivity($conn, $admin_id, 'Room', $room_id, 'Create', "Building {$building_id} Room {$room_no} ({$room_type}, capacity {$capacity})");
 
         $conn->commit();
         $inTransaction = false;
@@ -361,6 +370,8 @@ try {
             $delLab->execute();
             $delLab->close();
         }
+
+        logAdminActivity($conn, $admin_id, 'Room', $room_id, 'Update', "Building {$building_id} Room {$room_no} ({$room_type}, capacity {$capacity})");
 
         $conn->commit();
         $inTransaction = false;
