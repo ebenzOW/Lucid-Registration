@@ -417,7 +417,10 @@ $dashboardUrl = match($viewer_type) {
                             </div>
                         </div>
                     </div>
-                    <div class="d-flex gap-2">
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="admin/manage_change_requests.php?search_user=<?= (int)$target_id ?>" class="btn btn-primary btn-sm">
+                            Change Requests &amp; Audit Log
+                        </a>
                         <a href="admin/view_users.php?view=undergrads" class="btn btn-outline-secondary btn-sm">
                             &larr; User Directory
                         </a>
@@ -1296,7 +1299,16 @@ $dashboardUrl = match($viewer_type) {
                             </div>
                         </div>
                     </div>
-                    <div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <?php if ($viewer_type === 'Student' && $target_id === $viewer_id): ?>
+                            <a href="student/profile_requests.php" class="btn btn-primary">
+                                Request Profile Change
+                            </a>
+                        <?php elseif ($viewer_type === 'Admin'): ?>
+                            <a href="admin/manage_change_requests.php?search_user=<?= (int)$target_id ?>" class="btn btn-outline-primary">
+                                Change Requests &amp; Audit Log
+                            </a>
+                        <?php endif; ?>
                         <a href="<?= htmlspecialchars($dashboardUrl, ENT_QUOTES, 'UTF-8') ?>" class="btn btn-outline-secondary">
                             &larr; Back to Dashboard
                         </a>
@@ -1310,8 +1322,13 @@ $dashboardUrl = match($viewer_type) {
             <!-- Card 1: General User Information -->
             <div class="col-lg-6">
                 <div class="card shadow-sm border-0 h-100">
-                    <div class="card-header bg-white py-3">
+                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                         <h5 class="mb-0 fw-bold">General Account Information</h5>
+                        <?php if ($viewer_type === 'Student' && $target_id === $viewer_id): ?>
+                            <a href="student/profile_requests.php" class="btn btn-outline-primary btn-sm">
+                                Request Info Update &rarr;
+                            </a>
+                        <?php endif; ?>
                     </div>
                     <div class="card-body p-4">
                         <table class="table table-borderless table-sm mb-0">
