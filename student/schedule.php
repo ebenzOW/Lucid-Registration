@@ -12,8 +12,9 @@ require_once 'student_guard.php';
 $student_id = (int)$userID;
 
 require_once '../db_connect.php';
-require_once __DIR__ . '/../includes/academic_helpers.php';
-require_once '../profile_hover_card.php';
+require_once __DIR__ . '/../includes/ui_helpers.php';
+require_once __DIR__ . '/../includes/student_helpers.php';
+require_once __DIR__ . '/../includes/schedule_helpers.php';
 
 // 1. Fetch Student Profile
 $profile = getStudentProfile($conn, $student_id);
@@ -55,9 +56,6 @@ $course_count    = count($enrolledCourses);
     <title>My Schedule &bull; <?= htmlspecialchars($semester_name, ENT_QUOTES, 'UTF-8') ?> | Lucid University</title>
     <!-- Minimal Clean Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        <?= getProfileHoverCardStyles() ?>
-    </style>
 </head>
 <body class="bg-light">
 
@@ -214,7 +212,7 @@ $course_count    = count($enrolledCourses);
                                         <td class="text-center fw-bold"><?= (int)$sec['Course_Credits'] ?></td>
                                         <td><?= formatSchedule($sec['Time_Slot_Day'], $sec['Start_Time'], $sec['End_Time']) ?></td>
                                         <td><?= htmlspecialchars($sec['Building_Name'] . ' ' . $sec['Room_NO'], ENT_QUOTES, 'UTF-8') ?></td>
-                                        <td><?= htmlspecialchars($sec['Instructor_Name'], ENT_QUOTES, 'UTF-8') ?></td>
+                                        <td><?= renderFacultyLink($sec['Faculty_ID'] ?? 0, $sec['Instructor_Name'], '../') ?></td>
                                         <td class="text-center">
                                             <?php if (!empty($sec['Grade'])): ?>
                                                 <span class="badge text-bg-success"><?= htmlspecialchars($sec['Grade'], ENT_QUOTES, 'UTF-8') ?></span>

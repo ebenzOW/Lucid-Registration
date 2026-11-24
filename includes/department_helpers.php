@@ -1,13 +1,10 @@
 <?php
 /**
  * Read-only public department catalog helpers.
- * Uses the DEPARTMENT, MAJORS, and MINORS tables in schema(1).sql.
+ * Uses the DEPARTMENT, MAJORS, and MINORS tables.
  */
 
-function escapeHtml(mixed $value): string
-{
-    return htmlspecialchars((string) ($value ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-}
+require_once __DIR__ . '/ui_helpers.php';
 
 function getAllDepartments(mysqli $conn): array
 {
@@ -66,8 +63,7 @@ function getMinorsByDepartment(mysqli $conn, int $departmentId): array
 }
 
 /**
- * Courses offered by this department. These are NOT necessarily approved
- * electives for a particular major or minor.
+ * Courses offered by this department.
  */
 function getCoursesByDepartment(mysqli $conn, int $departmentId): array
 {
@@ -87,7 +83,6 @@ function getCoursesByDepartment(mysqli $conn, int $departmentId): array
 
 /**
  * Map each major in a department to its explicitly required courses.
- * Courses from OTHER departments are included when they are a requirement.
  * Returns [Major_ID => [course rows...]].
  */
 function getMajorRequiredCoursesByDepartment(mysqli $conn, int $departmentId): array

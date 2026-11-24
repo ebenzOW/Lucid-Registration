@@ -38,13 +38,11 @@ function sendPasswordResetCode(mysqli $conn, string $email): bool {
         $mail->SMTPAuth   = true;
         $mail->Username   = $mailConfig['smtp_user'];
         $mail->Password   = $mailConfig['smtp_pass'];
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
-        $mail->Port       = $mailConfig['smtp_port'];
+        $port = (int)$mailConfig['smtp_port'];
+        $mail->Port       = $port;
+        $mail->SMTPSecure = ($port === 587) ? PHPMailer::ENCRYPTION_STARTTLS : PHPMailer::ENCRYPTION_SMTPS;
 
-        $mail->SMTPDebug = 3; // Level 3: connection & data
-$mail->Debugoutput = function($str, $level) {
-    error_log("PHPMailer [{$level}] " . microtime(true) . ": " . trim($str));
-};
+        $mail->SMTPDebug  = 0;
 
         $mail->setFrom($mailConfig['from_email'], $mailConfig['from_name']);
         $mail->addAddress($email);
@@ -60,5 +58,3 @@ $mail->Debugoutput = function($str, $level) {
         return false;
     }
 }
-
-?>

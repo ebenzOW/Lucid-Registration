@@ -1,7 +1,7 @@
 <?php
 /**
  * Lucid University Course Registration System
- * Backend POST Handler: Register Course-Section for Spring 2027 (Semester_ID = 202701)
+ * Backend POST Handler: Register Course-Section
  *
  * Enforces all 8 business rules with prepared statements, strict parameter binding,
  * and pessimistic row locking for concurrency safety.
@@ -10,7 +10,7 @@ require_once 'student_guard.php';
 $student_id = (int)$userID;
 
 // Validate Request Method
-$post_semester = filter_var($_POST['semester'] ?? null, FILTER_VALIDATE_INT) ?: 202701;
+$post_semester = filter_var($_POST['semester'] ?? null, FILTER_VALIDATE_INT) ?: 202608;
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     $_SESSION['flash_error'] = "Invalid request method.";
@@ -34,13 +34,14 @@ if ($crn === false || $crn <= 0) {
 
 // Database Connection
 require_once '../db_connect.php';
-require_once __DIR__ . '/../includes/academic_helpers.php';
+require_once __DIR__ . '/../includes/schedule_helpers.php';
+require_once __DIR__ . '/../includes/student_helpers.php';
 
 // -----------------------------------------------------------------------------
 // Step 1: Target Course & Section Retrieval
 // -----------------------------------------------------------------------------
 $secStmt = $conn->prepare("
-    SELECT cs.CRN, cs.Course_ID, cs.Section_Number, cs.Semester_ID, cs.Available_seats,
+    SELECT cs.CRN, cs.Course_ID, cs.Section_Number, cs.Semester_ID, cs.Available_seats, cs.Status,
            cs.Time_Slot_ID, ts.Period_ID, c.Course_Type, c.Course_Credits, c.Course_Name
     FROM COURSE_SECTIONS cs
     JOIN COURSES c ON cs.Course_ID = c.Course_ID
@@ -55,7 +56,7 @@ $secStmt->close();
 
 if (!$target_section) {
     $_SESSION['flash_error'] = "Course section not found.";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$post_semester);
     exit;
 }
 
@@ -68,10 +69,16 @@ $period_id       = (int)$target_section['Period_ID'];
 $available_seats = (int)$target_section['Available_seats'];
 $course_name     = $target_section['Course_Name'];
 
+// Section Status Verification
+if (($target_section['Status'] ?? 'Active') !== 'Active') {
+    $_SESSION['flash_error'] = "This course section is not active for registration.";
+    header("Location: register.php?semester=" . (int)$semester_id);
+    exit;
+}
+
 // -----------------------------------------------------------------------------
 // Rule 1: Semester Existence & Registration Window Validation
 // -----------------------------------------------------------------------------
-// 1a: Verify that course_sections for the chosen semester exist
 $secExistsStmt = $conn->prepare("SELECT 1 FROM COURSE_SECTIONS WHERE Semester_ID = ? LIMIT 1");
 $secExistsStmt->bind_param("i", $semester_id);
 $secExistsStmt->execute();
@@ -81,11 +88,10 @@ $secExistsStmt->close();
 
 if (!$hasSections) {
     $_SESSION['flash_error'] = "No course sections exist for the selected semester.";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$semester_id);
     exit;
 }
 
-// 1b: Verify that registration for that selected semester is not past Last_Day_Of_Registration
 $winStmt = $conn->prepare("
     SELECT ir.Last_Day_Of_Registration, 
            (CURRENT_DATE() <= ir.Last_Day_Of_Registration) AS is_open,
@@ -103,7 +109,7 @@ $winStmt->close();
 if (!$winRow || !(int)$winRow['is_open']) {
     $semLabel = $winRow ? ($winRow['Semester_Name'] . ' ' . $winRow['Semester_Year']) : "the selected semester";
     $_SESSION['flash_error'] = "Registration for " . $semLabel . " is currently closed.";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$semester_id);
     exit;
 }
 
@@ -127,7 +133,7 @@ $holdStmt->close();
 
 if (!empty($activeHolds)) {
     $_SESSION['flash_error'] = "Registration blocked. You have active account holds: " . implode(', ', $activeHolds) . ".";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$semester_id);
     exit;
 }
 
@@ -143,7 +149,7 @@ $typeStmt->close();
 
 if (!$studentRow) {
     $_SESSION['flash_error'] = "Student record not found.";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$semester_id);
     exit;
 }
 
@@ -151,20 +157,19 @@ $student_type = trim($studentRow['Student_Type']);
 
 if (strcasecmp($student_type, 'Undergraduate') === 0 && strcasecmp($course_type, 'Graduate') === 0) {
     $_SESSION['flash_error'] = "Undergraduate students cannot register for graduate courses.";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$semester_id);
     exit;
 }
 
 if (strcasecmp($student_type, 'Graduate') === 0 && strcasecmp($course_type, 'Undergraduate') === 0) {
     $_SESSION['flash_error'] = "Graduate students cannot register for undergraduate courses.";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$semester_id);
     exit;
 }
 
 // -----------------------------------------------------------------------------
 // Rule 4: Repeat Course & Prior Completion Check
 // -----------------------------------------------------------------------------
-// Check 4a: Student already enrolled in this exact CRN
 $alreadyCrnStmt = $conn->prepare("SELECT 1 FROM ENROLLMENT WHERE CRN = ? AND Student_ID = ?");
 $alreadyCrnStmt->bind_param("ii", $crn, $student_id);
 $alreadyCrnStmt->execute();
@@ -174,11 +179,10 @@ $alreadyCrnStmt->close();
 
 if ($alreadyInThisCrn) {
     $_SESSION['flash_error'] = "You are already registered for this section.";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$semester_id);
     exit;
 }
 
-// Check 4b: Student already enrolled in any section of the same Course_ID in this semester
 $alreadyCourseStmt = $conn->prepare("
     SELECT cs.CRN, cs.Section_Number
     FROM ENROLLMENT e
@@ -194,18 +198,20 @@ $alreadyCourseStmt->close();
 
 if ($alreadyInCourse) {
     $_SESSION['flash_error'] = "You are already enrolled in a section of " . $course_id . " for this semester (CRN: " . $alreadyInCourse['CRN'] . ").";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$semester_id);
     exit;
 }
 
-// Check 4c: Student completed and passed Course_ID previously in STUDENT_HISTORY
 $historyStmt = $conn->prepare("
-    SELECT Grade
-    FROM STUDENT_HISTORY
-    WHERE Student_ID = ? AND Course_ID = ? AND Grade IN ('A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'D+', 'D', 'P')
+    SELECT Grade FROM (
+        SELECT Grade FROM STUDENT_HISTORY WHERE Student_ID = ? AND Course_ID = ?
+        UNION ALL
+        SELECT Grade FROM ENROLLMENT e JOIN COURSE_SECTIONS cs ON e.CRN = cs.CRN
+        WHERE e.Student_ID = ? AND cs.Course_ID = ? AND e.Grade IS NOT NULL
+    ) t WHERE Grade IN ('A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', 'D+', 'D', 'P')
     LIMIT 1
 ");
-$historyStmt->bind_param("is", $student_id, $course_id);
+$historyStmt->bind_param("isis", $student_id, $course_id, $student_id, $course_id);
 $historyStmt->execute();
 $historyRes = $historyStmt->get_result();
 $passedPrior = $historyRes->fetch_assoc();
@@ -213,7 +219,7 @@ $historyStmt->close();
 
 if ($passedPrior) {
     $_SESSION['flash_error'] = "You have already completed and passed this course.";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$semester_id);
     exit;
 }
 
@@ -231,8 +237,6 @@ while ($pRow = $prereqRes->fetch_assoc()) {
 $prereqStmt->close();
 
 if (!empty($prerequisites)) {
-    // Undergrad passing grades: A through C ('A', 'A-', 'B+', 'B', 'B-', 'C+', 'C')
-    // Grad passing grades: A through B ('A', 'A-', 'B+', 'B', 'B-')
     $isGrad = (strcasecmp($student_type, 'Graduate') === 0);
     $passingGrades = $isGrad 
         ? ["'A'", "'A-'", "'B+'", "'B'", "'B-'"] 
@@ -242,22 +246,25 @@ if (!empty($prerequisites)) {
     foreach ($prerequisites as $prereqId) {
         $satisfied = false;
 
-        // a) Check historical completion in STUDENT_HISTORY with a passing grade
+        // a) Check completion in STUDENT_HISTORY or ENROLLMENT with a passing grade
         $hCheckStmt = $conn->prepare("
-            SELECT 1
-            FROM STUDENT_HISTORY
-            WHERE Student_ID = ? AND Course_ID = ? AND Grade IN ($passingGradesSql)
+            SELECT 1 FROM (
+                SELECT Grade FROM STUDENT_HISTORY WHERE Student_ID = ? AND Course_ID = ?
+                UNION ALL
+                SELECT Grade FROM ENROLLMENT e JOIN COURSE_SECTIONS cs ON e.CRN = cs.CRN
+                WHERE e.Student_ID = ? AND cs.Course_ID = ? AND e.Grade IS NOT NULL
+            ) t WHERE Grade IN ($passingGradesSql)
             LIMIT 1
         ");
-        $hCheckStmt->bind_param("is", $student_id, $prereqId);
+        $hCheckStmt->bind_param("isis", $student_id, $prereqId, $student_id, $prereqId);
         $hCheckStmt->execute();
         $hRes = $hCheckStmt->get_result();
-        if ($hRes->fetch_assoc()) {
+        if ($hRes->num_rows > 0) {
             $satisfied = true;
         }
         $hCheckStmt->close();
 
-        // b) If not satisfied in history, check conditionally in-progress in ENROLLMENT across any active/ungraded enrollment
+        // b) Check currently enrolled in-progress course
         if (!$satisfied) {
             $ipCheckStmt = $conn->prepare("
                 SELECT 1
@@ -269,7 +276,7 @@ if (!empty($prerequisites)) {
             $ipCheckStmt->bind_param("is", $student_id, $prereqId);
             $ipCheckStmt->execute();
             $ipRes = $ipCheckStmt->get_result();
-            if ($ipRes->fetch_assoc()) {
+            if ($ipRes->num_rows > 0) {
                 $satisfied = true;
             }
             $ipCheckStmt->close();
@@ -277,7 +284,7 @@ if (!empty($prerequisites)) {
 
         if (!$satisfied) {
             $_SESSION['flash_error'] = "Prerequisite not met: " . $prereqId . " is required.";
-            header("Location: register.php");
+            header("Location: register.php?semester=" . (int)$semester_id);
             exit;
         }
     }
@@ -319,7 +326,7 @@ $total_enrolled = (int)($credRow['total_enrolled'] ?? 0);
 
 if ($total_enrolled + $course_credits > $max_allowed) {
     $_SESSION['flash_error'] = "Adding this course exceeds your limit of " . $max_allowed . " credits (Current: " . $total_enrolled . ", Course: " . $course_credits . ").";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$semester_id);
     exit;
 }
 
@@ -347,15 +354,17 @@ $confStmt->close();
 
 if ($conflict) {
     $_SESSION['flash_error'] = "Schedule conflict: Overlaps with " . $conflict['Course_Name'] . " (CRN: " . $conflict['CRN'] . ").";
-    header("Location: register.php");
+    header("Location: register.php?semester=" . (int)$semester_id);
     exit;
 }
 
 // -----------------------------------------------------------------------------
 // Rule 8: Concurrency Row Lock & Atomic Registration
 // -----------------------------------------------------------------------------
+$inTransaction = false;
 try {
     $conn->begin_transaction();
+    $inTransaction = true;
 
     // Lock target section row for pessimistic concurrency control
     $lockStmt = $conn->prepare("SELECT Available_seats FROM COURSE_SECTIONS WHERE CRN = ? FOR UPDATE");
@@ -367,14 +376,13 @@ try {
 
     if (!$sectionRow || (int)$sectionRow['Available_seats'] <= 0) {
         $conn->rollback();
+        $inTransaction = false;
         $_SESSION['flash_error'] = "Course section is full (0 available seats).";
-        header("Location: register.php");
+        header("Location: register.php?semester=" . (int)$semester_id);
         exit;
     }
 
-
-    // Cross-Department Major Requirements: Verify that the course belongs to the student's major/minor department
-    // OR is explicitly listed in MAJOR_REQUIREMENTS / MINOR_REQUIREMENTS for their declared major(s)/minor.
+    // Cross-Department Major Requirements validation
     $allowed_query = "
         SELECT 1 
         FROM COURSES c
@@ -416,8 +424,9 @@ try {
 
     if (!$is_allowed) {
         $conn->rollback();
+        $inTransaction = false;
         $_SESSION['flash_error'] = "Registration blocked: You may only register for courses within your declared major(s) or minor, or required for your curriculum.";
-        header("Location: register.php");
+        header("Location: register.php?semester=" . (int)$semester_id);
         exit;
     }
 
@@ -433,19 +442,19 @@ try {
     $updateStmt->execute();
     $updateStmt->close();
 
-    // Commit transaction atomically
     $conn->commit();
+    $inTransaction = false;
 
     $_SESSION['flash_success'] = "Successfully registered for " . $course_id . " (CRN: " . $crn . ")!";
     header("Location: register.php?semester=" . (int)$semester_id);
     exit;
 
 } catch (Exception $e) {
-    if ($conn) {
+    if ($inTransaction) {
         $conn->rollback();
+        $inTransaction = false;
     }
-    $_SESSION['flash_error'] = "Registration failed due to a system error: " . $e->getMessage();
-    $target_sem = isset($semester_id) ? $semester_id : (int)$post_semester;
-    header("Location: register.php?semester=" . (int)$target_sem);
+    $_SESSION['flash_error'] = "Database error: " . $e->getMessage();
+    header("Location: register.php?semester=" . (int)$semester_id);
     exit;
 }

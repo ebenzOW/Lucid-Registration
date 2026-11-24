@@ -1,5 +1,5 @@
 <?php
-require_once 'department_helpers.php';
+require_once __DIR__ . '/includes/department_helpers.php';
 
 $departments = [];
 $loadError = false;

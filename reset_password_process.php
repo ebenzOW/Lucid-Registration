@@ -37,15 +37,14 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $userStmt->close();
 
     if ($userResult->num_rows !== 1) {
-        //User email not part of records
         header("Location: reset_password.php?error=invalid_code");
         exit;
     }
 
     $user = $userResult->fetch_assoc();
-    $userId   = $user['User_ID'];
+    $userId   = (int)$user['User_ID'];
 
-    //Retrieve reset code record from PASSWORD_RESET table
+    // Retrieve reset code record from PASSWORD_RESET table
     $codeStmt = $conn->prepare("SELECT Reset_Code, Time_Code_Sent 
                                 FROM PASSWORD_RESET 
                                 WHERE User_ID = ?");
@@ -55,12 +54,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $codeStmt->close();
 
     if ($codeResult->num_rows !== 1) {
-        //reset code for email does not exist
         header("Location: reset_password.php?error=invalid_code");
         exit;
     }
 
     $resetRecord = $codeResult->fetch_assoc();
+
+    // Reject codes older than 30 minutes
+    $timeSent = strtotime($resetRecord['Time_Code_Sent'] ?? '');
+    if ($timeSent === false || (time() - $timeSent) > 1800) {
+        header("Location: reset_password.php?error=expired");
+        exit;
+    }
 
     // Verify user inputted code against record in db
     if ((string)$resetRecord['Reset_Code'] !== (string)$code) {
@@ -68,20 +73,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         exit;
     }
 
-    //Hash password 
-    $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
+    // Hash password with PASSWORD_BCRYPT
+    $hashedPassword = password_hash($newPassword, PASSWORD_BCRYPT);
 
-    //Update LOGIN table: set new hash, reset attempts, remove lockout
+    // Update LOGIN table: set new hash, reset attempts, remove lockout
     $updateStmt = $conn->prepare("UPDATE LOGIN 
                                   SET User_Password = ?, 
                                       No_Login_Attempts = 0, 
-                                      isLock = 0 
+                                      IsLock = 0 
                                   WHERE User_ID = ?");
     $updateStmt->bind_param("si", $hashedPassword, $userId);
     $updateStmt->execute();
     $updateStmt->close();
 
-    //Clean  PASSWORD_RESET table
+    // Clean PASSWORD_RESET table
     $deleteStmt = $conn->prepare("DELETE FROM PASSWORD_RESET WHERE User_ID = ?");
     $deleteStmt->bind_param("i", $userId);
     $deleteStmt->execute();
@@ -91,7 +96,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     $_SESSION = [];
     session_destroy();
 
-    //Redirect back to login with success flag
+    // Redirect back to login with success flag
     header("Location: login.php?reset=success");
     exit;
 }
@@ -102,5 +107,3 @@ if (isset($conn) && $conn instanceof mysqli) {
 }
 header("Location: login.php");
 exit;
-
-?>

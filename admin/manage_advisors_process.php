@@ -13,6 +13,7 @@
 
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
+require_once __DIR__ . '/../includes/auth_helpers.php';
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: manage_advisors.php");
@@ -21,6 +22,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 
 $admin_id = (int)$userID;
 $action   = trim($_POST['action'] ?? '');
+$inTransaction = false;
 
 try {
     // 1. Enforce admin write permission (Security Level >= 2)
@@ -36,6 +38,7 @@ try {
 
         // Start transaction
         $conn->begin_transaction();
+        $inTransaction = true;
 
         // 2. Lock and validate Faculty exists and is Full-Time
         $facStmt = $conn->prepare("
@@ -153,6 +156,7 @@ try {
         $logStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
 
         $_SESSION['success_message'] = "Prof. {$faculty['User_FName']} {$faculty['User_LName']} was successfully assigned as an advisor to student {$student['User_FName']} {$student['User_LName']} (ID: {$student_id})!";
         header("Location: manage_advisors.php?tab=students&dept=" . ($student['Dept_ID'] ?? ''));
@@ -185,6 +189,7 @@ try {
 
         // 1. Start transaction BEFORE checking capacity
         $conn->begin_transaction();
+        $inTransaction = true;
 
         // 2. Lock faculty row
         $facStmt = $conn->prepare("
@@ -298,6 +303,7 @@ try {
         $logStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
 
         $msg = "Successfully assigned {$assignedCount} student(s) to Prof. {$faculty['User_FName']} {$faculty['User_LName']}!";
         if ($skippedCount > 0) {
@@ -316,6 +322,7 @@ try {
         }
 
         $conn->begin_transaction();
+        $inTransaction = true;
 
         $delStmt = $conn->prepare("DELETE FROM ADVISOR_STUDENT WHERE Faculty_ID = ? AND Student_ID = ?");
         $delStmt->bind_param("ii", $faculty_id, $student_id);
@@ -331,6 +338,7 @@ try {
         $logStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
 
         $_SESSION['success_message'] = "Advising assignment between Student (ID: {$student_id}) and Faculty (ID: {$faculty_id}) was successfully removed.";
         header("Location: manage_advisors.php?tab=" . urlencode($_POST['return_tab'] ?? 'students'));
@@ -341,8 +349,9 @@ try {
     }
 
 } catch (Exception $e) {
-    if (isset($conn) && $conn->in_transaction) {
+    if ($inTransaction) {
         $conn->rollback();
+        $inTransaction = false;
     }
     $_SESSION['error_message'] = $e->getMessage();
     header("Location: manage_advisors.php?tab=" . urlencode($_POST['return_tab'] ?? 'students'));

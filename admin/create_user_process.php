@@ -1,37 +1,41 @@
 <?php
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
-require_once '../user_functions.php';
+require_once __DIR__ . '/../includes/user_helpers.php';
+require_once __DIR__ . '/../includes/auth_helpers.php';
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: create_user.php");
     exit;
 }
 
-$userType = $_POST["user_type"] ?? "";
+$inTransaction = false;
 
 try {
-    // Why: SRS rules forbid read-only administrators (Security Level 1) from creating users.
     requireAdminWriteAccess();
 
-    if (!in_array($userType, ["Admin", "Student", "Faculty", "Stat-Dept"], true)) {
-        throw new Exception("Invalid user type.");
+    $required = [
+        "user_type",
+        "first_name",
+        "last_name",
+        "email",
+        "password"
+    ];
+
+    foreach ($required as $field) {
+        if (empty($_POST[$field])) {
+            throw new Exception("Please fill in all required fields.");
+        }
     }
 
-    if (
-        empty($_POST["first_name"]) ||
-        empty($_POST["last_name"]) ||
-        empty($_POST["email"]) ||
-        empty($_POST["password"])
-    ) {
-        throw new Exception("Please fill in all required fields.");
-    }
+    $userType = $_POST["user_type"];
 
     if (!filter_var($_POST["email"], FILTER_VALIDATE_EMAIL)) {
         throw new Exception("Invalid email address.");
     }
 
     $conn->begin_transaction();
+    $inTransaction = true;
 
     $userID = generateUserID($conn);
 
@@ -55,6 +59,7 @@ try {
     }
 
     $conn->commit();
+    $inTransaction = false;
 
     $_SESSION["success_message"] =
         "User successfully created. User ID: " . $userID;
@@ -66,13 +71,12 @@ try {
     $_SESSION["new_user_data"]["user_id"] = $userID;
 
 } catch (Exception $e) {
-
-    if (isset($conn) && $conn->in_transaction) {
+    if ($inTransaction) {
         $conn->rollback();
+        $inTransaction = false;
     }
 
     $_SESSION["error_message"] = $e->getMessage();
-
     unset($_SESSION["new_user_data"]);
 }
 

@@ -14,7 +14,6 @@ require_once 'student_guard.php';
 $student_id = (int)$userID;
 
 require_once '../db_connect.php';
-require_once __DIR__ . '/../includes/academic_helpers.php';
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: majors_minors.php");
@@ -22,9 +21,11 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 }
 
 $action = trim($_POST['action'] ?? '');
+$inTransaction = false;
 
 try {
     $conn->begin_transaction();
+    $inTransaction = true;
 
     // Lock and fetch student classification
     $stuStmt = $conn->prepare("
@@ -53,7 +54,7 @@ try {
         }
 
         // Lock target Major
-        $mStmt = $conn->prepare("SELECT Major_ID, Department_ID, Major_Name, No_Credits_Required FROM MAJORS WHERE Major_ID = ? FOR UPDATE");
+        $mStmt = $conn->prepare("SELECT Major_ID, Department_ID, Major_Name, Program_Level, No_Credits_Required FROM MAJORS WHERE Major_ID = ? FOR UPDATE");
         $mStmt->bind_param("i", $major_id);
         $mStmt->execute();
         $major = $mStmt->get_result()->fetch_assoc();
@@ -78,15 +79,14 @@ try {
             throw new Exception("You are already declared in " . $major['Major_Name'] . ".");
         }
 
-        $mName = $major['Major_Name'];
-        $mCredits = (int)$major['No_Credits_Required'];
+        $progLevel = $major['Program_Level'] ?? 'Undergraduate';
 
-        // Academic Level Validation
+        // Academic Level Validation using Program_Level
         if ($studentType === 'Undergraduate') {
             if (count($existingMajorIds) >= 2) {
                 throw new Exception("Undergraduate students may declare a maximum of two majors simultaneously.");
             }
-            if ($mCredits < 100) {
+            if ($progLevel !== 'Undergraduate') {
                 throw new Exception("Undergraduate students cannot declare graduate degree programs.");
             }
         } elseif ($studentType === 'Graduate') {
@@ -94,12 +94,12 @@ try {
                 throw new Exception("Graduate students may declare exactly one degree program.");
             }
             if ($gradProgram === 'MS') {
-                if (stripos($mName, 'Ph.D.') !== false || $mCredits >= 100) {
-                    throw new Exception("Master's degree students (M.S.) can only declare graduate Master's programs (M.S./M.A./M.F.A.).");
+                if ($progLevel !== 'Graduate') {
+                    throw new Exception("Master's degree students (M.S.) can only declare graduate Master's programs.");
                 }
             } elseif ($gradProgram === 'PHD') {
-                if (stripos($mName, 'Ph.D.') === false) {
-                    throw new Exception("Doctoral students (Ph.D.) can only declare doctoral degree programs (Ph.D.).");
+                if ($progLevel !== 'Ph.D.') {
+                    throw new Exception("Doctoral students (Ph.D.) can only declare doctoral degree programs.");
                 }
             } else {
                 throw new Exception("Graduate program classification ('{$gradProgram}') not recognized.");
@@ -123,6 +123,7 @@ try {
         }
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Successfully declared " . htmlspecialchars($major['Major_Name']) . "!";
         header("Location: majors_minors.php");
         exit;
@@ -160,6 +161,7 @@ try {
         $updDept->close();
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Major successfully dropped.";
         header("Location: majors_minors.php");
         exit;
@@ -203,6 +205,7 @@ try {
         $insStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Successfully declared " . htmlspecialchars($minor['Minor_Name']) . "!";
         header("Location: majors_minors.php");
         exit;
@@ -219,6 +222,7 @@ try {
         $delStmt->close();
 
         $conn->commit();
+        $inTransaction = false;
         $_SESSION['success_message'] = "Minor successfully dropped.";
         header("Location: majors_minors.php");
         exit;
@@ -228,11 +232,11 @@ try {
     }
 
 } catch (Exception $e) {
-    if (isset($conn) && $conn->in_transaction) {
+    if ($inTransaction) {
         $conn->rollback();
+        $inTransaction = false;
     }
     $_SESSION['error_message'] = $e->getMessage();
     header("Location: majors_minors.php");
     exit;
 }
-

@@ -13,8 +13,7 @@ require_once 'student_guard.php';
 $student_id = (int)$userID;
 
 require_once '../db_connect.php';
-require_once __DIR__ . '/../includes/academic_helpers.php';
-require_once '../profile_hover_card.php';
+require_once __DIR__ . '/../includes/ui_helpers.php';
 
 $successMessage = $_SESSION["success_message"] ?? "";
 $errorMessage   = $_SESSION["error_message"] ?? "";
@@ -69,7 +68,7 @@ $smnStmt->close();
 
 // Fetch All Majors
 $majorsStmt = $conn->prepare("
-    SELECT m.Major_ID, m.Major_Name, m.No_Credits_Required, m.Department_ID, d.Department_Name
+    SELECT m.Major_ID, m.Major_Name, m.Program_Level, m.No_Credits_Required, m.Department_ID, d.Department_Name
     FROM MAJORS m
     JOIN DEPARTMENT d ON m.Department_ID = d.Department_ID
     ORDER BY d.Department_Name ASC, m.Major_Name ASC
@@ -130,7 +129,6 @@ $mnReqStmt->close();
     <!-- Minimal Clean Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        <?= getProfileHoverCardStyles() ?>
         .badge-undergrad { background-color: #0d6efd; color: #fff; }
         .badge-grad { background-color: #6f42c1; color: #fff; }
         .badge-doc { background-color: #212529; color: #fff; }
@@ -265,10 +263,11 @@ $mnReqStmt->close();
                                 $mCredits = (int)$m['No_Credits_Required'];
                                 $isDeclared = in_array($mid, $currentMajorIds, true);
 
-                                if (stripos($mName, 'Ph.D.') !== false) {
+                                $progLevel = $m['Program_Level'] ?? 'Undergraduate';
+                                if ($progLevel === 'Ph.D.') {
                                     $levelBadge = '<span class="badge badge-doc">Doctoral (Ph.D.)</span>';
                                     $levelType = 'phd';
-                                } elseif ($mCredits < 100) {
+                                } elseif ($progLevel === 'Graduate') {
                                     $levelBadge = '<span class="badge badge-grad">Graduate (Master)</span>';
                                     $levelType = 'ms';
                                 } else {
