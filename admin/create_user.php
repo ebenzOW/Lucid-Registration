@@ -331,7 +331,7 @@ $advStmt->close();
                             <div class="col-md-4">
                                 <label for="stat_employment_status" class="form-label small fw-bold">Employment Status</label>
                                 <input type="text" name="stat_employment_status" id="stat_employment_status" class="form-control" value="Full-Time" readonly>
-                                <div class="form-text text-muted">Stat-Dept staff must be Full-Time per SRS regulations.</div>
+                                <div class="form-text text-muted">Stat-Dept staff must be Full-Time per university policy.</div>
                             </div>
                         </div>
                     </div>

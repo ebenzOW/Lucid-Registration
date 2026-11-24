@@ -10,6 +10,9 @@
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
 require_once __DIR__ . '/../includes/auth_helpers.php';
+require_once __DIR__ . '/../includes/audit_helpers.php';
+
+$admin_id = (int)$userID;
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: majors_minors.php");
@@ -65,6 +68,8 @@ try {
         }
         $insStmt->close();
 
+        logAdminActivity($conn, $admin_id, 'Major', $major_id, 'Create', "{$major_name} ({$program_level}, {$no_credits_required} cr, Dept {$department_id})");
+
         $conn->commit();
         $inTransaction = false;
         $_SESSION['success_message'] = "Academic Major '{$major_name}' (ID: {$major_id}) was successfully created!";
@@ -113,6 +118,8 @@ try {
         }
         $updStmt->close();
 
+        logAdminActivity($conn, $admin_id, 'Major', $major_id, 'Update', "{$major_name} ({$program_level}, {$no_credits_required} cr, Dept {$department_id})");
+
         $conn->commit();
         $inTransaction = false;
         $_SESSION['success_message'] = "Major '{$major_name}' was successfully updated!";
@@ -142,6 +149,8 @@ try {
         }
         $insStmt->close();
 
+        logAdminActivity($conn, $admin_id, 'Requirement', "{$major_id}:{$course_id}", 'Create', "Added/updated {$course_id} (Min Grade {$min_grade}) for Major #{$major_id}");
+
         $conn->commit();
         $inTransaction = false;
         $_SESSION['success_message'] = "Course requirement {$course_id} (Min Grade: {$min_grade}) added to major!";
@@ -165,6 +174,8 @@ try {
             throw new Exception("Failed to remove course requirement: " . $delStmt->error);
         }
         $delStmt->close();
+
+        logAdminActivity($conn, $admin_id, 'Requirement', "{$major_id}:{$course_id}", 'Delete', "Removed {$course_id} from Major #{$major_id}");
 
         $conn->commit();
         $inTransaction = false;
@@ -214,6 +225,8 @@ try {
         }
         $insStmt->close();
 
+        logAdminActivity($conn, $admin_id, 'Minor', $minor_id, 'Create', "{$minor_name} ({$program_level}, {$no_credits_required} cr, Dept {$department_id})");
+
         $conn->commit();
         $inTransaction = false;
         $_SESSION['success_message'] = "Academic Minor '{$minor_name}' (ID: {$minor_id}) was successfully created!";
@@ -262,6 +275,8 @@ try {
         }
         $updStmt->close();
 
+        logAdminActivity($conn, $admin_id, 'Minor', $minor_id, 'Update', "{$minor_name} ({$program_level}, {$no_credits_required} cr, Dept {$department_id})");
+
         $conn->commit();
         $inTransaction = false;
         $_SESSION['success_message'] = "Minor '{$minor_name}' was successfully updated!";
@@ -291,6 +306,8 @@ try {
         }
         $insStmt->close();
 
+        logAdminActivity($conn, $admin_id, 'Requirement', "{$minor_id}:{$course_id}", 'Create', "Added/updated {$course_id} (Min Grade {$min_grade}) for Minor #{$minor_id}");
+
         $conn->commit();
         $inTransaction = false;
         $_SESSION['success_message'] = "Course requirement {$course_id} (Min Grade: {$min_grade}) added to minor!";
@@ -314,6 +331,8 @@ try {
             throw new Exception("Failed to remove course requirement: " . $delStmt->error);
         }
         $delStmt->close();
+
+        logAdminActivity($conn, $admin_id, 'Requirement', "{$minor_id}:{$course_id}", 'Delete', "Removed {$course_id} from Minor #{$minor_id}");
 
         $conn->commit();
         $inTransaction = false;

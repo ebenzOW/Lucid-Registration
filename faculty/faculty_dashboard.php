@@ -438,7 +438,7 @@ if ($roster_crn) {
                         <!-- TAB 3: GRADES SUBMISSION -->
                         <?php elseif ($activeTab === 'grades' && $isCurrentSemester): ?>
                             <div class="p-3">
-                                <!-- Grade Window Badges & SRS Policy Notice -->
+                                <!-- Grade Window Badges & Policy Notice -->
                                 <div class="row g-3 mb-4">
                                     <div class="col-md-6">
                                         <div class="p-3 border rounded bg-white h-100">

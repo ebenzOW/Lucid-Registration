@@ -262,7 +262,8 @@ $yearMap = [
                     Browse and inspect university user accounts by role classification and subtype academic details.
                 </div>
             </div>
-            <div class="d-flex gap-2">
+            <div class="d-flex flex-wrap gap-2">
+                <a href="manage_change_requests.php" class="btn btn-outline-primary btn-sm">Profile Change Requests &amp; Audit Log</a>
                 <a href="create_user.php" class="btn btn-primary btn-sm">+ Create New User</a>
                 <a href="admin_dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Back to Dashboard</a>
             </div>

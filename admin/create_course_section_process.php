@@ -10,6 +10,9 @@
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
 require_once __DIR__ . '/../includes/auth_helpers.php';
+require_once __DIR__ . '/../includes/audit_helpers.php';
+
+$admin_id = (int)$userID;
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: create_course_section.php");
@@ -257,6 +260,15 @@ try {
         throw new Exception("Database insertion failed: " . $insertStmt->error);
     }
     $insertStmt->close();
+
+    logAdminActivity(
+        $conn,
+        $admin_id,
+        'Course Section',
+        $newCrn,
+        'Create',
+        "Course {$course_id} Sec {$nextSectionNumber} (Sem {$semester_id}, Room {$room_id}, Faculty {$faculty_id})"
+    );
 
     $conn->commit();
     $inTransaction = false;

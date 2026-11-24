@@ -142,6 +142,46 @@ CREATE TABLE IF NOT EXISTS USER_UPDATE_LOG (
     FOREIGN KEY (User_ID) REFERENCES USER(User_ID) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS ADMIN_ACTIVITY_LOG (
+    Activity_ID INT NOT NULL AUTO_INCREMENT,
+    Admin_ID INT NOT NULL,
+    Target_Entity VARCHAR(40) NOT NULL,
+    Target_ID VARCHAR(50) NOT NULL,
+    Action_Type VARCHAR(40) NOT NULL,
+    Details VARCHAR(255) NOT NULL,
+    Created_At DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (Activity_ID),
+    INDEX idx_admin_activity_created (Created_At),
+    INDEX idx_admin_activity_entity (Target_Entity),
+    FOREIGN KEY (Admin_ID) REFERENCES ADMIN(Admin_ID)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS PROFILE_CHANGE_REQUESTS (
+    Request_ID INT NOT NULL AUTO_INCREMENT,
+    User_ID INT NOT NULL,
+    Req_FName VARCHAR(50) NOT NULL,
+    Req_MName VARCHAR(50),
+    Req_LName VARCHAR(50) NOT NULL,
+    Req_Gender VARCHAR(15),
+    Req_DOB DATE,
+    Req_PhoneNo VARCHAR(15),
+    Req_Street_No VARCHAR(10),
+    Req_Street_Name VARCHAR(50),
+    Req_City VARCHAR(50),
+    Req_State VARCHAR(20),
+    Req_Country VARCHAR(50),
+    Req_Zip_Code VARCHAR(15),
+    Request_Reason VARCHAR(255),
+    Request_Status VARCHAR(20) NOT NULL DEFAULT 'Pending',
+    Requested_At DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    Reviewed_By INT,
+    Reviewed_At DATETIME,
+    Admin_Notes VARCHAR(255),
+    PRIMARY KEY (Request_ID),
+    FOREIGN KEY (User_ID) REFERENCES USER(User_ID) ON DELETE CASCADE,
+    FOREIGN KEY (Reviewed_By) REFERENCES ADMIN(Admin_ID) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
 
 -- ============================================================================
 -- 4. FACULTY & DEPARTMENT HIERARCHY
