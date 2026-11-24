@@ -197,7 +197,7 @@ foreach ($rooms as $r) {
                 <button type="button" id="btnResetSelections" class="btn btn-outline-warning btn-sm">
                     Reset Selections
                 </button>
-                <a href="dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Back to Dashboard</a>
+                <a href="admin_dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Back to Dashboard</a>
             </div>
         </div>
 
@@ -338,7 +338,7 @@ foreach ($rooms as $r) {
                     </div>
 
                     <div class="d-flex gap-2 justify-content-end border-top pt-3">
-                        <a href="dashboard.php" class="btn btn-outline-secondary">Cancel</a>
+                        <a href="admin_dashboard.php" class="btn btn-outline-secondary">Cancel</a>
                         <button type="submit" class="btn btn-success px-4" id="btnSubmitSection">
                             Create Course Section
                         </button>

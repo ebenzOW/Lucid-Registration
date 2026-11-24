@@ -60,13 +60,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 $conn->close();
 
                 if ($_SESSION["User_Type"] === "Student") {
-                    header("Location: student/dashboard.php");
+                    header("Location: student/student_dashboard.php");
                     exit;
                 } else if ($_SESSION["User_Type"] === "Faculty") {
-                    header("Location: faculty/dashboard.php");
+                    header("Location: faculty/faculty_dashboard.php");
                     exit;
                 } else if ($_SESSION["User_Type"] === "Admin") {
-                    header("Location: admin/dashboard.php");
+                    header("Location: admin/admin_dashboard.php");
                     exit;
                 } else if ($_SESSION["User_Type"] === "Stat-Dept") {
                     header("Location: stat_department/stat_department_dashboard.php");

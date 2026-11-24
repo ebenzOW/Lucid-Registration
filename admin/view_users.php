@@ -264,7 +264,7 @@ $yearMap = [
             </div>
             <div class="d-flex gap-2">
                 <a href="create_user.php" class="btn btn-primary btn-sm">+ Create New User</a>
-                <a href="dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Back to Dashboard</a>
+                <a href="admin_dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Back to Dashboard</a>
             </div>
         </div>
 

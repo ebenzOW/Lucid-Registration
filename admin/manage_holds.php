@@ -148,7 +148,7 @@ $stmt->close();
                         + Add Hold to Student
                     </button>
                 <?php endif; ?>
-                <a href="dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Back to Dashboard</a>
+                <a href="admin_dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Back to Dashboard</a>
             </div>
         </div>
 

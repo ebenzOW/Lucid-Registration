@@ -77,7 +77,7 @@ function formatSemDate(?string $d): string {
 <body class="bg-light">
 
     <!-- Unified Student Top Navigation -->
-    <?= renderStudentNavbar($conn, $student_id, 'dashboard.php') ?>
+    <?= renderStudentNavbar($conn, $student_id, basename($_SERVER['PHP_SELF'])) ?>
 
     <div class="container mb-5">
 

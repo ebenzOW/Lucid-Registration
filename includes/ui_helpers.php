@@ -117,7 +117,7 @@ function renderFacultyLink($faculty_id, $instructor_name, $root_prefix = '../'):
  */
 function renderAdminNavbar(mysqli $conn, int $admin_id, string $activeFile = ''): string {
     $navItems = [
-        'dashboard.php'              => 'Dashboard',
+        'admin_dashboard.php'        => 'Dashboard',
         'master_schedule.php'        => 'Master Schedule',
         'create_user.php'            => 'Create User',
         'view_users.php'             => 'View Users',
@@ -147,7 +147,7 @@ function renderAdminNavbar(mysqli $conn, int $admin_id, string $activeFile = '')
     return <<<HTML
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
         <div class="container-fluid px-lg-5">
-            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University <span class="badge bg-danger ms-1">Admin</span></a>
+            <a class="navbar-brand fw-bold" href="admin/admin_dashboard.php">Lucid University <span class="badge bg-danger ms-1">Admin</span></a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNav" aria-controls="adminNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -172,7 +172,7 @@ HTML;
  */
 function renderStudentNavbar(mysqli $conn, int $student_id, string $activeFile = ''): string {
     $navItems = [
-        'dashboard.php'       => 'Dashboard',
+        'student_dashboard.php'       => 'Dashboard',
         'schedule.php'        => 'My Schedule',
         'master_schedule.php' => 'Master Schedule',
         'register.php'        => 'Register / Add-Drop',
@@ -198,7 +198,7 @@ function renderStudentNavbar(mysqli $conn, int $student_id, string $activeFile =
     return <<<HTML
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="dashboard.php">Lucid University</a>
+            <a class="navbar-brand fw-bold" href="student_dashboard.php">Lucid University</a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#studentNav" aria-controls="studentNav" aria-expanded="false" aria-label="Toggle navigation">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -223,8 +223,8 @@ HTML;
 /**
  * Render unified Bootstrap 5.3 navigation bar for Faculty pages.
  */
-function renderFacultyNavbar(mysqli $conn, int $faculty_id, string $activePage = 'dashboard.php'): string {
-    $isDashboard = ($activePage === 'dashboard.php');
+function renderFacultyNavbar(mysqli $conn, int $faculty_id, string $activePage = 'faculty_dashboard.php'): string {
+    $isDashboard = ($activePage === 'faculty_dashboard.php');
     $isAdvisees = in_array($activePage, ['view_advisees.php', 'advisee_degree_audit.php'], true);
     $isProfile = ($activePage === 'user_profile.php');
 
@@ -243,7 +243,7 @@ function renderFacultyNavbar(mysqli $conn, int $faculty_id, string $activePage =
     return <<<HTML
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
         <div class="container">
-            <a class="navbar-brand fw-bold" href="dashboard.php">
+            <a class="navbar-brand fw-bold" href="faculty_dashboard.php">
                 Lucid University <span class="badge bg-warning text-dark ms-1">Faculty</span>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#facultyNav" aria-controls="facultyNav" aria-expanded="false" aria-label="Toggle navigation">
@@ -252,7 +252,7 @@ function renderFacultyNavbar(mysqli $conn, int $faculty_id, string $activePage =
             <div class="collapse navbar-collapse" id="facultyNav">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item">
-                        <a class="nav-link{$dashActiveClass}"{$dashAria} href="dashboard.php">Dashboard &amp; Current Sections</a>
+                        <a class="nav-link{$dashActiveClass}"{$dashAria} href="faculty_dashboard.php">Dashboard &amp; Current Sections</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link{$adviseesActiveClass}"{$adviseesAria} href="view_advisees.php">View Advisees</a>

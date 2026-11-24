@@ -50,7 +50,7 @@ $has_active_holds = !empty($holds);
                 </div>
             </div>
             <div>
-                <a href="dashboard.php" class="btn btn-outline-secondary btn-sm">
+                <a href="student_dashboard.php" class="btn btn-outline-secondary btn-sm">
                     &larr; Return to Dashboard
                 </a>
             </div>

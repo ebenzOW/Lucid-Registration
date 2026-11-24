@@ -113,7 +113,7 @@ foreach ($semesters as $sem) {
                 </div>
             </div>
             <div class="d-flex gap-2">
-                <a href="dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Dashboard</a>
+                <a href="admin_dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Dashboard</a>
                 <?php if ((int)($_SESSION['Security_Level'] ?? 1) >= 2): ?>
                     <a href="edit_semester.php" class="btn btn-primary btn-sm">+ Add New Semester</a>
                 <?php endif; ?>

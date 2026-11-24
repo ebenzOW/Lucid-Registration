@@ -187,7 +187,7 @@ if ($attendance_crn) {
                 <a href="create_course_section.php" class="btn btn-success shadow-sm">
                     + Create Course Section
                 </a>
-                <a href="dashboard.php" class="btn btn-outline-secondary shadow-sm">
+                <a href="admin_dashboard.php" class="btn btn-outline-secondary shadow-sm">
                     &larr; Return to Dashboard
                 </a>
             </div>

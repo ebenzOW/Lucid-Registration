@@ -72,7 +72,7 @@ $advStmt->close();
                 </div>
             </div>
             <div>
-                <a href="dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Back to Dashboard</a>
+                <a href="admin_dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Back to Dashboard</a>
             </div>
         </div>
 
@@ -337,7 +337,7 @@ $advStmt->close();
                     </div>
 
                     <div class="d-flex gap-2 justify-content-end border-top pt-3">
-                        <a href="dashboard.php" class="btn btn-outline-secondary">Cancel</a>
+                        <a href="admin_dashboard.php" class="btn btn-outline-secondary">Cancel</a>
                         <button type="submit" class="btn btn-primary px-4">
                             Create User Account
                         </button>

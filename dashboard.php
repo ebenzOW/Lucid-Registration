@@ -6,10 +6,10 @@ if (!isset($_SESSION["User_ID"])) {
 }
 $userType = $_SESSION["User_Type"] ?? '';
 match ($userType) {
-    'Student'   => header("Location: student/dashboard.php"),
-    'Faculty'   => header("Location: faculty/dashboard.php"),
-    'Admin'     => header("Location: admin/dashboard.php"),
-    'Stat-Dept' => header("Location: stat_dept/dashboard.php"),
+    'Student'   => header("Location: student/student_dashboard.php"),
+    'Faculty'   => header("Location: faculty/faculty_dashboard.php"),
+    'Admin'     => header("Location: admin/admin_dashboard.php"),
+    'Stat-Dept' => header("Location: stat_dept/stat_department_dashboard.php"),
     default     => header("Location: login.php"),
 };
 exit;

@@ -125,7 +125,7 @@ if ($roster_crn) {
 <body class="bg-light">
 
     <!-- Unified Faculty Top Navigation -->
-    <?= renderFacultyNavbar($conn, $faculty_id, 'dashboard.php') ?>
+    <?= renderFacultyNavbar($conn, $faculty_id, basename($_SERVER['PHP_SELF'])) ?>
 
     <div class="container mb-5">
 

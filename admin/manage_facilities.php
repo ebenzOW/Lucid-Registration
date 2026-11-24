@@ -94,7 +94,7 @@ foreach ($rooms as $r) {
                         <i class="bi bi-eye"></i> Read-Only (Security Level 1)
                     </span>
                 <?php endif; ?>
-                <a href="dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Dashboard</a>
+                <a href="admin_dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Dashboard</a>
             </div>
         </div>
 

@@ -137,7 +137,7 @@ $canWrite = ((int)($_SESSION['Security_Level'] ?? 1) >= 2);
                 </div>
             </div>
             <div class="d-flex gap-2">
-                <a href="dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Dashboard</a>
+                <a href="admin_dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Dashboard</a>
                 <?php if ($canWrite): ?>
                     <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createMajorModal">
                         + Create New Major

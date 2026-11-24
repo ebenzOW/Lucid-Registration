@@ -343,9 +343,9 @@ if ($target_type === 'Student' && $viewer_type === 'Admin') {
 
 // Determine Dashboard Return URL
 $dashboardUrl = match($viewer_type) {
-    'Student'   => 'student/dashboard.php',
-    'Faculty'   => 'faculty/dashboard.php',
-    'Admin'     => 'admin/dashboard.php',
+    'Student'   => 'student/student_dashboard.php',
+    'Faculty'   => 'faculty/faculty_dashboard.php',
+    'Admin'     => 'admin/admin_dashboard.php',
     'Stat-Dept' => 'stat_department/stat_department_dashboard.php',
     default     => 'login.php'
 };
@@ -424,7 +424,7 @@ $dashboardUrl = match($viewer_type) {
                         <a href="admin/view_users.php?view=undergrads" class="btn btn-outline-secondary btn-sm">
                             &larr; User Directory
                         </a>
-                        <a href="admin/dashboard.php" class="btn btn-outline-primary btn-sm">
+                        <a href="admin/admin_dashboard.php" class="btn btn-outline-primary btn-sm">
                             Admin Dashboard &rarr;
                         </a>
                     </div>
