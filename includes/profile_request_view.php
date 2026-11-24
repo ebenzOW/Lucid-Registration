@@ -1,97 +1,18 @@
 <?php
 /**
- * Lucid University Course Registration System
- * Student Portal - Profile Information & Change Requests
- *
- * Allows students to view their current profile information, see immutable
- * SRS fields (User_ID, User_Email), submit change requests for allowed personal
- * profile attributes, and track the status of past requests.
+ * Shared View Partial for Student & Faculty Profile Change Requests
+ * Expects: $user, $requests, $portalUserId, $idFieldLabel, $navbarHtml, $successMessage, $errorMessage
  */
 
-require_once 'student_guard.php';
-$student_id = (int)$userID;
-
-require_once '../db_connect.php';
-require_once __DIR__ . '/../includes/ui_helpers.php';
-require_once __DIR__ . '/../includes/student_helpers.php';
-
-// Ensure PROFILE_CHANGE_REQUESTS table exists
-$conn->query("
-    CREATE TABLE IF NOT EXISTS PROFILE_CHANGE_REQUESTS (
-        Request_ID INT NOT NULL AUTO_INCREMENT,
-        User_ID INT NOT NULL,
-        Req_FName VARCHAR(50) NOT NULL,
-        Req_MName VARCHAR(50),
-        Req_LName VARCHAR(50) NOT NULL,
-        Req_Gender VARCHAR(15),
-        Req_DOB DATE,
-        Req_PhoneNo VARCHAR(15),
-        Req_Street_No VARCHAR(10),
-        Req_Street_Name VARCHAR(50),
-        Req_City VARCHAR(50),
-        Req_State VARCHAR(20),
-        Req_Country VARCHAR(50),
-        Req_Zip_Code VARCHAR(15),
-        Request_Reason VARCHAR(255),
-        Request_Status VARCHAR(20) NOT NULL DEFAULT 'Pending',
-        Requested_At DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        Reviewed_By INT,
-        Reviewed_At DATETIME,
-        Admin_Notes VARCHAR(255),
-        PRIMARY KEY (Request_ID),
-        FOREIGN KEY (User_ID) REFERENCES `USER`(User_ID) ON DELETE CASCADE,
-        FOREIGN KEY (Reviewed_By) REFERENCES ADMIN(Admin_ID) ON DELETE SET NULL
-    ) ENGINE=InnoDB
-");
-
-$successMessage = $_SESSION['success_message'] ?? '';
-$errorMessage   = $_SESSION['error_message'] ?? '';
-unset($_SESSION['success_message'], $_SESSION['error_message']);
-
-// 1. Fetch Current Student User Record
-$uStmt = $conn->prepare("
-    SELECT u.User_ID, u.User_Type, u.User_FName, u.User_MName, u.User_LName,
-           u.User_Gender, u.User_DOB, u.User_PhoneNo,
-           u.Street_No, u.Street_Name, u.City, u.State, u.Country, u.Zip_Code,
-           l.User_Email
-    FROM `USER` u
-    LEFT JOIN LOGIN l ON u.User_ID = l.User_ID
-    WHERE u.User_ID = ?
-");
-$uStmt->bind_param("i", $student_id);
-$uStmt->execute();
-$user = $uStmt->get_result()->fetch_assoc();
-$uStmt->close();
-
-if (!$user) {
-    die("Student record not found.");
-}
-
-// 2. Fetch Student's Profile Change Requests History
-$reqStmt = $conn->prepare("
-    SELECT r.*,
-           a_u.User_FName AS Admin_FName,
-           a_u.User_LName AS Admin_LName
-    FROM PROFILE_CHANGE_REQUESTS r
-    LEFT JOIN `USER` a_u ON r.Reviewed_By = a_u.User_ID
-    WHERE r.User_ID = ?
-    ORDER BY r.Requested_At DESC, r.Request_ID DESC
-");
-$reqStmt->bind_param("i", $student_id);
-$reqStmt->execute();
-$requestsRes = $reqStmt->get_result();
-$requests = [];
 $hasPendingRequest = false;
 $pendingRequest = null;
-
-while ($row = $requestsRes->fetch_assoc()) {
-    $requests[] = $row;
+foreach ($requests as $row) {
     if ($row['Request_Status'] === 'Pending') {
         $hasPendingRequest = true;
         $pendingRequest = $row;
+        break;
     }
 }
-$reqStmt->close();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -99,9 +20,7 @@ $reqStmt->close();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Profile Change Requests | Lucid University</title>
-    <!-- Minimal Clean Bootstrap 5.3 CSS & Icons -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
         .locked-field {
             background-color: #e9ecef !important;
@@ -111,8 +30,7 @@ $reqStmt->close();
 </head>
 <body class="bg-light">
 
-    <!-- Unified Student Top Navigation -->
-    <?= renderStudentNavbar($conn, $student_id, 'profile_requests.php') ?>
+    <?= $navbarHtml ?>
 
     <div class="container mb-5">
 
@@ -140,7 +58,7 @@ $reqStmt->close();
                 </div>
             </div>
             <div class="d-flex gap-2">
-                <a href="../user_profile.php?user_id=<?= $student_id ?>" class="btn btn-outline-primary btn-sm">
+                <a href="../user_profile.php?user_id=<?= (int)$portalUserId ?>" class="btn btn-outline-primary btn-sm">
                     View My Full Profile
                 </a>
                 <a href="dashboard.php" class="btn btn-outline-secondary btn-sm">
@@ -184,14 +102,14 @@ $reqStmt->close();
                         <form action="profile_requests_process.php" method="POST">
                             <input type="hidden" name="action" value="submit_request">
 
-                            <!-- Immutable SRS Locked Fields -->
+                            <!-- Immutable Identifiers -->
                             <div class="p-3 bg-light rounded border mb-4">
                                 <div class="small fw-bold text-uppercase text-secondary mb-2">
-                                    Immutable University Identifiers (Forbidden from Modification per SRS)
+                                    Immutable University Identifiers (Contact the Registrar for Changes)
                                 </div>
                                 <div class="row g-3">
                                     <div class="col-md-4">
-                                        <label class="form-label small fw-semibold text-muted mb-1">Student ID (Locked)</label>
+                                        <label class="form-label small fw-semibold text-muted mb-1"><?= htmlspecialchars($idFieldLabel, ENT_QUOTES, 'UTF-8') ?> (Locked)</label>
                                         <input type="text" class="form-control form-control-sm locked-field font-monospace" value="<?= (int)$user['User_ID'] ?>" disabled readonly>
                                     </div>
                                     <div class="col-md-8">
@@ -236,6 +154,7 @@ $reqStmt->close();
                                 <div class="col-md-4">
                                     <label for="req_dob" class="form-label small fw-bold">Date of Birth</label>
                                     <input type="date" name="req_dob" id="req_dob" class="form-control form-control-sm"
+                                           max="<?= date('Y-m-d') ?>"
                                            value="<?= htmlspecialchars($user['User_DOB'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                            <?= $hasPendingRequest ? 'disabled' : '' ?>>
                                 </div>
@@ -286,7 +205,8 @@ $reqStmt->close();
                                 <div class="col-md-3">
                                     <label for="req_country" class="form-label small fw-bold">Country</label>
                                     <input type="text" name="req_country" id="req_country" class="form-control form-control-sm" maxlength="50"
-                                           value="<?= htmlspecialchars($user['Country'] ?? 'USA', ENT_QUOTES, 'UTF-8') ?>"
+                                           placeholder="e.g. USA"
+                                           value="<?= htmlspecialchars($user['Country'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
                                            <?= $hasPendingRequest ? 'disabled' : '' ?>>
                                 </div>
                             </div>
@@ -295,7 +215,7 @@ $reqStmt->close();
                             <div class="mb-4">
                                 <label for="request_reason" class="form-label small fw-bold">Reason / Supporting Note for Administrator</label>
                                 <input type="text" name="request_reason" id="request_reason" class="form-control form-control-sm" maxlength="255"
-                                       placeholder="e.g. Moved to new off-campus apartment, updated cell phone number, etc."
+                                       placeholder="e.g. Moved to new residence, updated phone number, legal name update"
                                        <?= $hasPendingRequest ? 'disabled' : '' ?>>
                             </div>
 
@@ -314,7 +234,6 @@ $reqStmt->close();
 
             <!-- Right Column: Current Active Profile Summary & Request History -->
             <div class="col-lg-5">
-                <!-- Current On-File Record Card -->
                 <div class="card shadow-sm border-0 mb-4">
                     <div class="card-header bg-white py-3">
                         <h6 class="mb-0 fw-bold">Current On-File Record</h6>
@@ -323,7 +242,7 @@ $reqStmt->close();
                         <div class="row g-2">
                             <div class="col-5 text-muted">Full Name:</div>
                             <div class="col-7 fw-semibold">
-                                <?= htmlspecialchars(trim(($user['User_FName'] ?? '') . ' ' . ($user['User_MName'] ? $user['User_MName'] . ' ' : '') . ($user['User_LName'] ?? '')), ENT_QUOTES, 'UTF-8') ?>
+                                <?= htmlspecialchars(trim(($user['User_FName'] ?? '') . ' ' . (!empty($user['User_MName']) ? $user['User_MName'] . ' ' : '') . ($user['User_LName'] ?? '')), ENT_QUOTES, 'UTF-8') ?>
                             </div>
                             <div class="col-5 text-muted">Gender / DOB:</div>
                             <div class="col-7">
@@ -340,7 +259,6 @@ $reqStmt->close();
                     </div>
                 </div>
 
-                <!-- Submitted Requests History -->
                 <div class="card shadow-sm border-0">
                     <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                         <h6 class="mb-0 fw-bold">My Request History</h6>
@@ -360,7 +278,7 @@ $reqStmt->close();
                                             'Rejected' => 'bg-danger',
                                             default    => 'bg-warning text-dark'
                                         };
-                                        $reqFullName = trim($r['Req_FName'] . ' ' . ($r['Req_MName'] ? $r['Req_MName'] . ' ' : '') . $r['Req_LName']);
+                                        $reqFullName = trim($r['Req_FName'] . ' ' . (!empty($r['Req_MName']) ? $r['Req_MName'] . ' ' : '') . $r['Req_LName']);
                                         $reqAddr = formatAddress([
                                             'Street_No'   => $r['Req_Street_No'] ?? '',
                                             'Street_Name' => $r['Req_Street_Name'] ?? '',
@@ -404,10 +322,8 @@ $reqStmt->close();
             </div>
 
         </div>
-
     </div>
 
-    <!-- Bootstrap 5.3 JS Bundle -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

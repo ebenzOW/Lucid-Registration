@@ -5,7 +5,7 @@ $departments = [];
 $loadError = false;
 
 try {
-    require_once __DIR__ . '/db_connect.php';
+    require_once 'db_connect.php';
     $departments = getAllDepartments($conn);
 } catch (Throwable $e) {
     error_log('Department directory error: ' . $e->getMessage());

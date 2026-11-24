@@ -12,11 +12,20 @@ require_once __DIR__ . '/../includes/student_helpers.php';
 $admin_id = (int)$userID;
 
 // Read selected view tab
-$validViews = ['all', 'admins', 'undergrads', 'graduates', 'faculty'];
+$validViews = ['all', 'admins', 'undergrads', 'graduates', 'faculty', 'stat_dept'];
+$viewLabels = [
+    'all'        => 'All',
+    'admins'     => 'Admins',
+    'undergrads' => 'Undergrads',
+    'graduates'  => 'Graduates',
+    'faculty'    => 'Faculty',
+    'stat_dept'  => 'Stat-Dept',
+];
 $view = $_GET['view'] ?? 'all';
 if (!in_array($view, $validViews, true)) {
     $view = 'all';
 }
+$viewLabel = $viewLabels[$view] ?? ucfirst($view);
 
 // Read filter parameters
 $search_id    = isset($_GET['search_id']) ? trim($_GET['search_id']) : '';
@@ -197,6 +206,35 @@ switch ($view) {
         ";
         break;
 
+    case 'stat_dept':
+        $sql = "
+            SELECT
+                u.User_ID,
+                sd.Stat_ID,
+                u.User_Type,
+                u.User_FName,
+                u.User_MName,
+                u.User_LName,
+                u.User_Gender,
+                u.User_DOB,
+                u.User_PhoneNo,
+                u.Street_No,
+                u.Street_Name,
+                u.City,
+                u.State,
+                u.Country,
+                u.Zip_Code,
+                l.User_Email,
+                l.IsLock
+            FROM `USER` u
+            JOIN STAT_DEPT sd ON u.User_ID = sd.Stat_ID
+            LEFT JOIN LOGIN l ON u.User_ID = l.User_ID
+            {$whereClause}
+            AND u.User_Type = 'Stat-Dept'
+            ORDER BY sd.Stat_ID ASC
+        ";
+        break;
+
     case 'all':
     default:
         $sql = "
@@ -244,7 +282,7 @@ $yearMap = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>User Directory &bull; <?= ucfirst($view) ?> | Lucid University Admin</title>
+    <title>User Directory &bull; <?= htmlspecialchars($viewLabel, ENT_QUOTES, 'UTF-8') ?> | Lucid University Admin</title>
     <!-- Minimal Clean Bootstrap 5.3 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
@@ -262,7 +300,8 @@ $yearMap = [
                     Browse and inspect university user accounts by role classification and subtype academic details.
                 </div>
             </div>
-            <div class="d-flex gap-2">
+            <div class="d-flex flex-wrap gap-2">
+                <a href="manage_change_requests.php" class="btn btn-outline-primary btn-sm">Profile Change Requests &amp; Audit Log</a>
                 <a href="create_user.php" class="btn btn-primary btn-sm">+ Create New User</a>
                 <a href="dashboard.php" class="btn btn-outline-secondary btn-sm">&larr; Back to Dashboard</a>
             </div>
@@ -295,6 +334,11 @@ $yearMap = [
                     <li class="nav-item">
                         <a class="nav-link <?= ($view === 'faculty') ? 'active' : '' ?>" href="view_users.php?view=faculty">
                             <strong>Faculty</strong>
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link <?= ($view === 'stat_dept') ? 'active' : '' ?>" href="view_users.php?view=stat_dept">
+                            <strong>Stat-Dept</strong>
                         </a>
                     </li>
                 </ul>
@@ -332,7 +376,7 @@ $yearMap = [
         <div class="card shadow-sm border-0 mb-4">
             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                 <h5 class="mb-0 fw-bold">
-                    Registered <?= ucfirst($view) ?> Records
+                    Registered <?= htmlspecialchars($viewLabel, ENT_QUOTES, 'UTF-8') ?> Records
                 </h5>
                 <span class="badge bg-secondary"><?= $result->num_rows ?> Total Accounts</span>
             </div>
@@ -406,6 +450,19 @@ $yearMap = [
                                     <th>Specialty</th>
                                     <th>Office</th>
                                     <th>Department(s) &amp; % Time</th>
+                                    <th>Phone</th>
+                                    <th>Address</th>
+                                </tr>
+                            <?php elseif ($view === 'stat_dept'): ?>
+                                <tr>
+                                    <th>Stat ID</th>
+                                    <th>Full Name</th>
+                                    <th>Email</th>
+                                    <th>Employment Status</th>
+                                    <th>Access Level</th>
+                                    <th>Account Status</th>
+                                    <th>Gender</th>
+                                    <th>DOB</th>
                                     <th>Phone</th>
                                     <th>Address</th>
                                 </tr>
@@ -604,6 +661,33 @@ $yearMap = [
                                             <td><?= htmlspecialchars($user["Specialty"] ?? '-', ENT_QUOTES, 'UTF-8') ?></td>
                                             <td><?= htmlspecialchars($user["Office_ID"] ?? 'TBA', ENT_QUOTES, 'UTF-8') ?></td>
                                             <td><?= htmlspecialchars($user["depts_list"] ?? 'None', ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td><?= htmlspecialchars($user["User_PhoneNo"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td><?= htmlspecialchars($formattedAddr ?: '-', ENT_QUOTES, 'UTF-8') ?></td>
+                                        </tr>
+                                    <?php elseif ($view === 'stat_dept'): ?>
+                                        <tr>
+                                            <td>
+                                                <a href="../user_profile.php?user_id=<?= $uid ?>" class="fw-bold text-decoration-none">
+                                                    <?= (int)$user["Stat_ID"] ?>
+                                                </a>
+                                            </td>
+                                            <td class="fw-semibold">
+                                                <a href="../user_profile.php?user_id=<?= $uid ?>" class="text-decoration-none">
+                                                    <?= htmlspecialchars($fullName, ENT_QUOTES, 'UTF-8') ?>
+                                                </a>
+                                            </td>
+                                            <td><?= htmlspecialchars($user["User_Email"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td><span class="badge bg-warning text-dark">Full-Time</span></td>
+                                            <td><span class="badge bg-light text-dark border">Anonymized Read-Only</span></td>
+                                            <td>
+                                                <?php if ($isLocked): ?>
+                                                    <span class="badge bg-danger">Locked</span>
+                                                <?php else: ?>
+                                                    <span class="badge bg-success">Active</span>
+                                                <?php endif; ?>
+                                            </td>
+                                            <td><?= htmlspecialchars($user["User_Gender"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
+                                            <td><?= htmlspecialchars($user["User_DOB"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
                                             <td><?= htmlspecialchars($user["User_PhoneNo"] ?? "-", ENT_QUOTES, 'UTF-8') ?></td>
                                             <td><?= htmlspecialchars($formattedAddr ?: '-', ENT_QUOTES, 'UTF-8') ?></td>
                                         </tr>

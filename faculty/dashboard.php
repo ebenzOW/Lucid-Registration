@@ -16,7 +16,7 @@ require_once __DIR__ . '/../includes/faculty_helpers.php';
 require_once __DIR__ . '/../includes/schedule_helpers.php';
 require_once __DIR__ . '/../includes/student_helpers.php';
 
-// 1. Fetch Faculty Profile and Department Details
+//Fetch Faculty Profile and Department Details
 $faculty = getFacultyProfile($conn, $faculty_id);
 if (!$faculty) {
     die("Faculty record not found.");
@@ -29,16 +29,16 @@ $faculty_office    = $faculty['Office_ID'] ?? 'TBA';
 $faculty_dept      = $faculty['Department_Names'] ?? 'General Academics';
 $faculty_specialty = $faculty['Specialty'] ?? 'General';
 
-// 2. Fetch Fall 2026 and Spring 2027 Teaching Schedules
+//Fetch Fall 2026 and Spring 2027 Teaching Schedules
 $fallSchedule   = getFacultyScheduleBySemester($conn, $faculty_id, 202608);
 $springSchedule = getFacultyScheduleBySemester($conn, $faculty_id, 202701);
 $fallSections   = $fallSchedule['sections'];
 $springSections = $springSchedule['sections'];
 
-// 3. Fetch Assigned Advisees
-$advisees = getFacultyAdvisees($conn, $faculty_id);
+//Fetch Assigned Advisee Count
+$adviseeCount = getFacultyAdviseeCount($conn, $faculty_id);
 
-// 4. Section Management Workspace (Roster, Attendance, Grades)
+//Section Management Workspace (Roster, Attendance, Grades)
 $roster_crn = isset($_GET['roster_crn']) ? filter_var($_GET['roster_crn'], FILTER_VALIDATE_INT) : null;
 $rosterStudents = null;
 $rosterSectionInfo = null;
@@ -189,7 +189,7 @@ if ($roster_crn) {
                             </div>
                             <div class="col-4">
                                 <div class="p-3 bg-light rounded border">
-                                    <div class="h3 fw-bold mb-0 text-dark"><?= count($advisees) ?><span class="fs-6 text-muted">/15</span></div>
+                                    <div class="h3 fw-bold mb-0 text-dark"><?= $adviseeCount ?><span class="fs-6 text-muted">/15</span></div>
                                     <div class="small text-muted text-uppercase" style="font-size: 0.72rem;">Advisees</div>
                                 </div>
                             </div>
@@ -438,7 +438,7 @@ if ($roster_crn) {
                         <!-- TAB 3: GRADES SUBMISSION -->
                         <?php elseif ($activeTab === 'grades' && $isCurrentSemester): ?>
                             <div class="p-3">
-                                <!-- Grade Window Badges & SRS Policy Notice -->
+                                <!-- Grade Window Badges & Policy Notice -->
                                 <div class="row g-3 mb-4">
                                     <div class="col-md-6">
                                         <div class="p-3 border rounded bg-white h-100">
@@ -670,69 +670,6 @@ if ($roster_crn) {
                                             <a href="?roster_crn=<?= $sCrn ?>&tab=roster#section-workspace" class="btn btn-outline-primary btn-sm <?= ($isSelected && $activeTab === 'roster') ? 'active' : '' ?>">
                                                 View Roster
                                             </a>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <!-- Assigned Academic Advisees Table -->
-        <div class="card shadow-sm border-0 mb-4">
-            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                <div>
-                    <h5 class="mb-0 fw-bold">Assigned Academic Advisees</h5>
-                    <small class="text-muted">Formal Advisees (Policy Cap: 15 Students)</small>
-                </div>
-                <span class="badge bg-secondary fs-6"><?= count($advisees) ?> / 15 Assigned</span>
-            </div>
-            <div class="card-body p-0">
-                <?php if (empty($advisees)): ?>
-                    <div class="p-4 text-center text-muted">
-                        No students currently assigned as academic advisees.
-                    </div>
-                <?php else: ?>
-                    <div class="table-responsive">
-                        <table class="table table-hover table-striped mb-0 align-middle">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Student ID</th>
-                                    <th>Full Name</th>
-                                    <th>Email</th>
-                                    <th>Phone</th>
-                                    <th>Class Standing</th>
-                                    <th>Attendance</th>
-                                    <th>Major(s)</th>
-                                    <th class="text-center">Earned Credits</th>
-                                    <th class="text-center">Holds</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($advisees as $adv): ?>
-                                    <tr>
-                                        <td><strong><?= (int)$adv['Student_ID'] ?></strong></td>
-                                        <td class="fw-semibold">
-                                            <a href="../user_profile.php?user_id=<?= (int)$adv['Student_ID'] ?>" class="text-decoration-none text-primary fw-semibold">
-                                                <?= htmlspecialchars($adv['full_name'], ENT_QUOTES, 'UTF-8') ?>
-                                            </a>
-                                        </td>
-                                        <td><?= htmlspecialchars($adv['User_Email'] ?? '-', ENT_QUOTES, 'UTF-8') ?></td>
-                                        <td><?= htmlspecialchars($adv['User_PhoneNo'] ?? '-', ENT_QUOTES, 'UTF-8') ?></td>
-                                        <td><?= htmlspecialchars($adv['class_standing'], ENT_QUOTES, 'UTF-8') ?></td>
-                                        <td><?= htmlspecialchars($adv['Attendance_Type'], ENT_QUOTES, 'UTF-8') ?></td>
-                                        <td><?= htmlspecialchars($adv['Majors'] ?? 'Undeclared', ENT_QUOTES, 'UTF-8') ?></td>
-                                        <td class="text-center fw-bold"><?= (int)$adv['Credits_Earned'] ?></td>
-                                        <td class="text-center">
-                                            <?php if ((int)$adv['Active_Holds_Count'] > 0): ?>
-                                                <span class="badge bg-danger">
-                                                    <?= (int)$adv['Active_Holds_Count'] ?> Hold<?= (int)$adv['Active_Holds_Count'] > 1 ? 's' : '' ?>
-                                                </span>
-                                            <?php else: ?>
-                                                <span class="badge bg-success">Clear</span>
-                                            <?php endif; ?>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>

@@ -197,6 +197,101 @@ function getStudentProfile(mysqli $conn, int $student_id): ?array {
 }
 
 /**
+ * Fetch comprehensive student profile payload needed for user_profile.php.
+ */
+function getStudentProfileDetails(mysqli $conn, int $student_id): ?array {
+    $stmt = $conn->prepare("
+        SELECT s.Student_Year, s.Student_Type, s.Credits_Earned,
+               d.Department_Name,
+               COALESCE(ug.Undergrad_Type, g.Grad_Type, 'Full-Time') AS Attendance_Type,
+               g.Grad_Program, g.Thesis
+        FROM STUDENT s
+        LEFT JOIN DEPARTMENT d ON s.Dept_ID = d.Department_ID
+        LEFT JOIN UNDERGRADUATE_STUDENT ug ON s.Student_ID = ug.Student_ID
+        LEFT JOIN GRADUATE_STUDENT g ON s.Student_ID = g.Student_ID
+        WHERE s.Student_ID = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param("i", $student_id);
+    $stmt->execute();
+    $studentData = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+
+    if (!$studentData) {
+        return null;
+    }
+
+    $yearMap = [
+        1 => 'Freshman',
+        2 => 'Sophomore',
+        3 => 'Junior',
+        4 => 'Senior',
+        5 => 'Graduate',
+    ];
+    $yearVal = (int)($studentData['Student_Year'] ?? 1);
+    $studentData['class_standing'] = (strcasecmp($studentData['Student_Type'] ?? '', 'Graduate') === 0)
+        ? 'Graduate'
+        : ($yearMap[$yearVal] ?? 'Undergraduate');
+
+    $transcript = getStudentTranscriptData($conn, $student_id);
+    $studentData['cum_gpa'] = $transcript['cum_gpa'];
+
+    $mStmt = $conn->prepare("
+        SELECT m.Major_Name
+        FROM STUDENT_MAJORS sm
+        JOIN MAJORS m ON sm.Major_ID = m.Major_ID
+        WHERE sm.Student_ID = ?
+        ORDER BY sm.Major_ID ASC
+    ");
+    $mStmt->bind_param("i", $student_id);
+    $mStmt->execute();
+    $mRes = $mStmt->get_result();
+    $majors = [];
+    while ($mRow = $mRes->fetch_assoc()) {
+        $majors[] = $mRow['Major_Name'];
+    }
+    $mStmt->close();
+    $studentData['majors'] = $majors;
+
+    $minStmt = $conn->prepare("
+        SELECT m.Minor_Name
+        FROM STUDENT_MINORS sm
+        JOIN MINORS m ON sm.Minor_ID = m.Minor_ID
+        WHERE sm.Student_ID = ?
+        ORDER BY sm.Minor_ID ASC
+    ");
+    $minStmt->bind_param("i", $student_id);
+    $minStmt->execute();
+    $minRes = $minStmt->get_result();
+    $minors = [];
+    while ($minRow = $minRes->fetch_assoc()) {
+        $minors[] = $minRow['Minor_Name'];
+    }
+    $minStmt->close();
+    $studentData['minor'] = $minors[0] ?? null;
+
+    $advStmt = $conn->prepare("
+        SELECT f.Faculty_ID, u.User_FName, u.User_LName, l.User_Email
+        FROM ADVISOR_STUDENT a
+        JOIN FACULTY f ON a.Faculty_ID = f.Faculty_ID
+        JOIN `USER` u ON f.Faculty_ID = u.User_ID
+        LEFT JOIN LOGIN l ON u.User_ID = l.User_ID
+        WHERE a.Student_ID = ?
+        LIMIT 1
+    ");
+    $advStmt->bind_param("i", $student_id);
+    $advStmt->execute();
+    $studentData['advisor'] = $advStmt->get_result()->fetch_assoc() ?: null;
+    $advStmt->close();
+
+    $holds = getStudentHolds($conn, $student_id);
+    $studentData['holds'] = $holds;
+    $studentData['holds_count'] = count($holds);
+
+    return $studentData;
+}
+
+/**
  * Fetch enrolled schedule for a student in a specific semester.
  * MUST select: e.Midterm_Grade, e.Final_Grade, e.Grade, cs.Faculty_ID, cs.Status, c.Course_Description.
  */

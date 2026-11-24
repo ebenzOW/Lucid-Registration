@@ -69,7 +69,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     header("Location: admin/dashboard.php");
                     exit;
                 } else if ($_SESSION["User_Type"] === "Stat-Dept") {
-                    header("Location: stat_dept/dashboard.php");
+                    header("Location: stat_department/stat_department_dashboard.php");
                     exit;
                 }
             } else {

@@ -7,6 +7,9 @@
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
 require_once __DIR__ . '/../includes/auth_helpers.php';
+require_once __DIR__ . '/../includes/audit_helpers.php';
+
+$admin_id = (int)$userID;
 
 if ($_SERVER["REQUEST_METHOD"] !== "POST") {
     header("Location: semesters.php");
@@ -161,12 +164,14 @@ try {
         }
         $irStmt->close();
 
+        logAdminActivity($conn, $admin_id, 'Semester', $semester_id, 'Create', "{$semester_name} {$semester_year} ({$start_date} to {$end_date})");
+
         $conn->commit();
         $inTransaction = false;
 
         $_SESSION['success_message'] = "Academic Semester {$semester_name} {$semester_year} (ID: {$semester_id}) and calendar deadlines successfully configured!";
     } else {
-        // Verify existence & past term constraint per SRS with FOR UPDATE
+        // Verify existence & past term constraint with FOR UPDATE
         $checkStmt = $conn->prepare("SELECT Semester_ID, End_Date FROM SEMESTER WHERE Semester_ID = ? FOR UPDATE");
         $checkStmt->bind_param("i", $semester_id);
         $checkStmt->execute();
@@ -178,7 +183,7 @@ try {
         }
 
         if ($today > $existing['End_Date']) {
-            throw new Exception("Cannot modify past semester schedules per university SRS constraints.");
+            throw new Exception("Cannot modify past semester schedules per university policy.");
         }
 
         // Update SEMESTER (Semester_ID is immutable)
@@ -210,6 +215,8 @@ try {
             throw new Exception("Failed to update calendar deadlines: " . $irUpdStmt->error);
         }
         $irUpdStmt->close();
+
+        logAdminActivity($conn, $admin_id, 'Semester', $semester_id, 'Update', "{$semester_name} {$semester_year} ({$start_date} to {$end_date})");
 
         $conn->commit();
         $inTransaction = false;

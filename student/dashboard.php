@@ -145,7 +145,7 @@ function formatSemDate(?string $d): string {
                         </div>
                     </div>
                     <div class="col-lg-4 text-lg-end mt-3 mt-lg-0 d-flex flex-wrap flex-lg-column gap-2 justify-content-lg-center">
-                        <a href="register.php" class="btn btn-primary px-3 py-2 text-nowrap shadow-sm">
+                        <a href="register.php?semester=202701" class="btn btn-primary px-3 py-2 text-nowrap shadow-sm">
                             <i class="bi bi-pencil-square me-1"></i> Spring 2027 Registration &rarr;
                         </a>
                         <a href="majors_minors.php" class="btn btn-outline-primary px-3 py-2 text-nowrap shadow-sm">
@@ -373,7 +373,7 @@ function formatSemDate(?string $d): string {
                         <p class="card-text text-secondary small flex-grow-1">
                             Register for Spring 2027 courses, browse open catalog sections, monitor credit caps, and drop registered sections.
                         </p>
-                        <a href="register.php" class="btn btn-outline-success btn-sm mt-2">
+                        <a href="register.php?semester=202701" class="btn btn-outline-success btn-sm mt-2">
                             Add / Drop Classes &rarr;
                         </a>
                     </div>
@@ -455,6 +455,26 @@ function formatSemDate(?string $d): string {
                         </p>
                         <a href="holds.php" class="btn btn-outline-danger btn-sm mt-2">
                             View Account Holds &rarr;
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 8. Profile Change Requests -->
+            <div class="col-md-6 col-lg-4">
+                <div class="card shadow-sm h-100 border-0">
+                    <div class="card-body d-flex flex-column">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="card-title fw-bold mb-0">
+                                <i class="bi bi-person-gear me-1 text-primary"></i>Profile Change Requests
+                            </h5>
+                            <span class="badge bg-primary">Personal Info</span>
+                        </div>
+                        <p class="card-text text-secondary small flex-grow-1">
+                            Request updates to your legal name, phone number, date of birth, or residential address and track administrator approvals.
+                        </p>
+                        <a href="profile_requests.php" class="btn btn-outline-primary btn-sm mt-2">
+                            Request Profile Update &rarr;
                         </a>
                     </div>
                 </div>

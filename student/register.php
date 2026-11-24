@@ -51,19 +51,27 @@ while ($sRow = $semRes->fetch_assoc()) {
 }
 $semStmt->close();
 
-// Determine selected semester
+// Determine selected semester: default to earliest semester with open registration
 $selected_sem_id = isset($_GET['semester']) ? filter_var($_GET['semester'], FILTER_VALIDATE_INT) : null;
 if (!$selected_sem_id || !isset($availableSemesters[$selected_sem_id])) {
-    if (isset($availableSemesters[202608])) {
-        $selected_sem_id = 202608;
-    } elseif (isset($availableSemesters[202701])) {
-        $selected_sem_id = 202701;
-    } elseif (!empty($availableSemesters)) {
-        // Default to the first open semester with existing sections
-        $firstSem = reset($availableSemesters);
-        $selected_sem_id = (int)$firstSem['Semester_ID'];
-    } else {
-        $selected_sem_id = 202608;
+    $selected_sem_id = null;
+    foreach ($availableSemesters as $sId => $sData) {
+        if (!empty($sData['is_reg_open'])) {
+            $selected_sem_id = (int)$sId;
+            break;
+        }
+    }
+    if (!$selected_sem_id) {
+        if (isset($availableSemesters[202701])) {
+            $selected_sem_id = 202701;
+        } elseif (isset($availableSemesters[202608])) {
+            $selected_sem_id = 202608;
+        } elseif (!empty($availableSemesters)) {
+            $firstSem = reset($availableSemesters);
+            $selected_sem_id = (int)$firstSem['Semester_ID'];
+        } else {
+            $selected_sem_id = 202701;
+        }
     }
 }
 

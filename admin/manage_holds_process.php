@@ -7,6 +7,7 @@
 require_once 'admin_guard.php';
 require_once '../db_connect.php';
 require_once __DIR__ . '/../includes/auth_helpers.php';
+require_once __DIR__ . '/../includes/audit_helpers.php';
 
 $admin_id = (int)$userID;
 
@@ -82,11 +83,7 @@ try {
                 $insStmt->close();
 
                 // Audit log insertion
-                $changedAttr = substr("Applied Hold: " . $hold_type, 0, 50);
-                $logStmt = $conn->prepare("INSERT INTO USER_UPDATE_LOG (Admin_ID, User_ID, Changed_Attribute, Date_Of_Change) VALUES (?, ?, ?, NOW())");
-                $logStmt->bind_param("iis", $admin_id, $student_id, $changedAttr);
-                $logStmt->execute();
-                $logStmt->close();
+                logUserUpdate($conn, $admin_id, $student_id, "Applied Hold: " . $hold_type);
 
                 $appliedNames[] = $hold_type;
             }
@@ -95,6 +92,8 @@ try {
         if (empty($appliedNames)) {
             throw new Exception("The selected hold(s) are already active on Student {$student_id}.");
         }
+
+        logAdminActivity($conn, $admin_id, 'Student Hold', $student_id, 'Apply', "Applied hold(s): " . implode(', ', $appliedNames));
 
         $conn->commit();
         $inTransaction = false;
@@ -134,11 +133,8 @@ try {
         $delStmt->close();
 
         // Audit log insertion
-        $changedAttr = substr("Removed Hold: " . $hold_type, 0, 50);
-        $logStmt = $conn->prepare("INSERT INTO USER_UPDATE_LOG (Admin_ID, User_ID, Changed_Attribute, Date_Of_Change) VALUES (?, ?, ?, NOW())");
-        $logStmt->bind_param("iis", $admin_id, $student_id, $changedAttr);
-        $logStmt->execute();
-        $logStmt->close();
+        logUserUpdate($conn, $admin_id, $student_id, "Removed Hold: " . $hold_type);
+        logAdminActivity($conn, $admin_id, 'Student Hold', $student_id, 'Remove', "Removed {$hold_type} hold");
 
         $conn->commit();
         $inTransaction = false;
