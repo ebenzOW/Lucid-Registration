@@ -41,7 +41,15 @@ if (!$user) {
 
 $target_type = $user['User_Type'];
 
-// 2. Permission & Access Control (FERPA + Directory Rules)
+
+// 2. Permission & Access Control
+// - Users can always view their own profile.
+// - Stat-Dept users can only view their own profile.
+// - Admins can view any profile.
+// - All authenticated users can view Faculty profiles in directory view.
+// - Faculty can view student profiles if they advise or teach them.
+
+
 $hasAccess = false;
 $canViewPrivate = false;
 
@@ -49,7 +57,8 @@ if ($target_id === $viewer_id || $viewer_type === 'Admin') {
     $hasAccess = true;
     $canViewPrivate = true;
 } elseif ($viewer_type === 'Stat-Dept') {
-    $hasAccess = true;
+    // Stat-Dept can only view aggregate statistics, not individual profiles
+    $hasAccess = false; 
     $canViewPrivate = false;
 } elseif ($target_type === 'Faculty') {
     $hasAccess = true;
@@ -131,11 +140,38 @@ if ($target_type === 'Student') {
     ];
 }
 
-$dashboardUrl = match ($viewer_type) {
-    'Student' => 'student/dashboard.php',
-    'Faculty' => 'faculty/dashboard.php',
-    'Admin'   => 'admin/dashboard.php',
-    default   => 'login.php',
+
+$validAdminViews = ['details', 'enrollment', 'grades', 'attendance', 'transcript', 'audit'];
+$adminView = isset($_GET['view']) && in_array($_GET['view'], $validAdminViews, true) ? $_GET['view'] : 'details';
+
+$fallSchedule = null;
+$springSchedule = null;
+$attRecords = null;
+$transcriptData = null;
+$auditData = null;
+$studentHolds = [];
+
+if ($target_type === 'Student' && $viewer_type === 'Admin') {
+    $studentHolds = getStudentHolds($conn, $target_id);
+    if (in_array($adminView, ['enrollment', 'grades'])) {
+        $fallSchedule = getStudentScheduleBySemester($conn, $target_id, 202608);
+        $springSchedule = getStudentScheduleBySemester($conn, $target_id, 202701);
+    } elseif ($adminView === 'attendance') {
+        $attRecords = getStudentAttendanceRecords($conn, $target_id, 202608);
+    } elseif ($adminView === 'transcript') {
+        $transcriptData = getStudentTranscriptData($conn, $target_id);
+    } elseif ($adminView === 'audit') {
+        $auditData = getDegreeAuditData($conn, $target_id);
+    }
+}
+
+// Determine Dashboard Return URL
+$dashboardUrl = match($viewer_type) {
+    'Student'   => 'student/dashboard.php',
+    'Faculty'   => 'faculty/dashboard.php',
+    'Admin'     => 'admin/dashboard.php',
+    'Stat-Dept' => 'stat_department/stat_department_dashboard.php',
+    default     => 'login.php'
 };
 $initials = strtoupper(substr($user['User_FName'] ?? '', 0, 1) . substr($user['User_LName'] ?? '', 0, 1));
 ?>

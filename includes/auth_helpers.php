@@ -26,7 +26,8 @@ function ensureSessionUserLoaded(mysqli $conn, int $userID): void {
 /**
  * FERPA access verification:
  * - Students can only access their own records.
- * - Administrators and Stat-Dept staff can access all student records.
+ * - Administrators can access all student records.
+ * - Stat-Dept staff can access aggregate statistics.
  * - Faculty can access advisees (ADVISOR_STUDENT) or students enrolled in their sections (COURSE_SECTIONS -> ENROLLMENT).
  */
 function canViewerAccessStudentRecord(mysqli $conn, int $viewer_id, string $viewer_type, int $target_student_id): bool {
@@ -37,7 +38,7 @@ function canViewerAccessStudentRecord(mysqli $conn, int $viewer_id, string $view
         return $viewer_id === $target_student_id;
     }
 
-    if ($viewer_type === 'Admin' || $viewer_type === 'Stat-Dept') {
+    if ($viewer_type === 'Admin') {
         return true;
     }
 

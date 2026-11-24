@@ -77,23 +77,28 @@ if ($departmentId === null || $departmentId === false) {
 
     <main class="container py-5 flex-grow-1">
         <?php if ($errorMessage !== null): ?>
+            <div class="d-flex justify-content-end mb-4">
+                <a href="view_departments.php" class="btn btn-outline-secondary btn-sm">&larr; Back to Departments</a>
+            </div>
             <div class="alert alert-warning" role="alert"><?= escapeHtml($errorMessage) ?></div>
-            <a class="btn btn-outline-primary" href="view_departments.php">Back to Departments</a>
         <?php else: ?>
-            <div class="mb-4">
-                <h1 class="display-6 fw-bold text-dark mb-3"><?= escapeHtml($department['Department_Name']) ?></h1>
-                <p class="text-secondary mb-1">
-                    <strong>Email:</strong>
-                    <a href="mailto:<?= escapeHtml($department['Department_Email']) ?>">
-                        <?= escapeHtml($department['Department_Email']) ?>
-                    </a>
-                </p>
-                <p class="text-secondary mb-0">
-                    <strong>Phone:</strong>
-                    <a href="tel:<?= escapeHtml(preg_replace('/[^0-9+]/', '', $department['Department_Phone'])) ?>">
-                        <?= escapeHtml($department['Department_Phone']) ?>
-                    </a>
-                </p>
+            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
+                <div>
+                    <h1 class="display-6 fw-bold text-dark mb-3"><?= escapeHtml($department['Department_Name']) ?></h1>
+                    <p class="text-secondary mb-1">
+                        <strong>Email:</strong>
+                        <a href="mailto:<?= escapeHtml($department['Department_Email']) ?>">
+                            <?= escapeHtml($department['Department_Email']) ?>
+                        </a>
+                    </p>
+                    <p class="text-secondary mb-0">
+                        <strong>Phone:</strong>
+                        <a href="tel:<?= escapeHtml(preg_replace('/[^0-9+]/', '', $department['Department_Phone'])) ?>">
+                            <?= escapeHtml($department['Department_Phone']) ?>
+                        </a>
+                    </p>
+                </div>
+                <a href="view_departments.php" class="btn btn-outline-secondary btn-sm">&larr; Back to Departments</a>
             </div>
 
             <div class="row g-4">

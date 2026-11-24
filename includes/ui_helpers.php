@@ -127,6 +127,7 @@ function renderAdminNavbar(mysqli $conn, int $admin_id, string $activeFile = '')
         'semesters.php'              => 'Semesters',
         'majors_minors.php'          => 'Majors & Minors',
         'manage_advisors.php'        => 'Advisors',
+        'manage_departments.php'     => 'Departments',
         'manage_facilities.php'      => 'Facilities',
         'manage_change_requests.php' => 'Change Requests',
     ];
@@ -223,12 +224,17 @@ HTML;
  * Render unified Bootstrap 5.3 navigation bar for Faculty pages.
  */
 function renderFacultyNavbar(mysqli $conn, int $faculty_id, string $activePage = 'dashboard.php'): string {
+
+    $isAdvisees = in_array($activePage, ['view_advisees.php', 'advisee_degree_audit.php'], true);
     $isDashboard       = ($activePage === 'dashboard.php');
     $isProfile         = ($activePage === 'user_profile.php');
     $isProfileRequests = ($activePage === 'profile_requests.php');
 
     $dashActiveClass = $isDashboard ? ' active' : '';
     $dashAria        = $isDashboard ? ' aria-current="page"' : '';
+
+    $adviseesActiveClass = $isAdvisees ? ' active' : '';
+    $adviseesAria = $isAdvisees ? ' aria-current="page"' : '';
 
     $profActiveClass = $isProfile ? ' active' : '';
     $profAria        = $isProfile ? ' aria-current="page"' : '';
@@ -257,13 +263,53 @@ function renderFacultyNavbar(mysqli $conn, int $faculty_id, string $activePage =
                         <a class="nav-link text-nowrap{$profActiveClass}"{$profAria} href="../user_profile.php?user_id={$escapedFacultyId}">My Profile</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link text-nowrap{$reqActiveClass}"{$reqAria} href="profile_requests.php">Profile Requests</a>
+
+                        <a class="nav-link{$adviseesActiveClass}"{$adviseesAria} href="view_advisees.php">View Advisees</a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link{$profActiveClass}"{$profAria} href="../user_profile.php?user_id={$escapedFacultyId}">My Profile</a>
+                    </li>
+                    <li class="nav-item">
+
+                        <a class="nav-link text-nowrap{$reqActiveClass}"{$reqAria} href="profile_requests.php">Profile Requests</a>
+
+                    </li>
+
                 </ul>
                 <div class="d-flex align-items-center gap-3">
                     <span class="text-nowrap">{$profileHtml}</span>
                     <form action="../logout.php" method="POST" class="m-0">
                         <button type="submit" class="btn btn-outline-light btn-sm text-nowrap">Log Out</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </nav>
+HTML;
+}
+
+function renderStatDepartmentNavbar(array $profile): string {
+    $profileName = escapeHtml($profile['full_name'] ?? 'Stat Department Staff');
+
+    return <<<HTML
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
+        <div class="container-fluid px-lg-5">
+            <a class="navbar-brand fw-bold" href="stat_department_dashboard.php">
+                Lucid University <span class="badge bg-info text-dark ms-1">Stat Department</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#statNav" aria-controls="statNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="statNav">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                    <li class="nav-item">
+                        <a class="nav-link active" aria-current="page" href="stat_department_dashboard.php">Statistics Dashboard</a>
+                    </li>
+                </ul>
+                <div class="d-flex align-items-center gap-3">
+                    <span class="navbar-text text-white small">{$profileName}</span>
+                    <form action="../logout.php" method="POST" class="m-0">
+                        <button type="submit" class="btn btn-outline-light btn-sm">Log Out</button>
                     </form>
                 </div>
             </div>
