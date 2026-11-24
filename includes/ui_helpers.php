@@ -127,6 +127,7 @@ function renderAdminNavbar(mysqli $conn, int $admin_id, string $activeFile = '')
         'semesters.php'              => 'Semesters',
         'majors_minors.php'          => 'Majors & Minors',
         'manage_advisors.php'        => 'Advisors',
+        'manage_departments.php'     => 'Departments',
         'manage_facilities.php'      => 'Facilities',
     ];
 
